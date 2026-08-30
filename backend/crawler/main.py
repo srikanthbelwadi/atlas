@@ -88,7 +88,13 @@ def _describe_table(project: str, dataset: str, table_row) -> tuple[str, dict]:
     columns = list(client().query(cols_sql, job_config=job_config).result(timeout=30))
     column_lines = [f"  - {c.column_name} ({c.data_type})" for c in columns]
 
-    size_gb = (table_row.total_logical_bytes or table_row.total_bytes or 0) / (1024**3) if hasattr(table_row, "total_logical_bytes") else None
+    # NOTE: only total_logical_bytes is ever selected (by both the TABLE_STORAGE
+    # query and its TABLES fallback below) -- there is no total_bytes column to
+    # fall back to. An earlier version referenced table_row.total_bytes here,
+    # which raised "no row field 'total_bytes'" on every fallback-path row
+    # (total_logical_bytes is NULL there) once the `description`-column bug
+    # above stopped masking it.
+    size_gb = (table_row.total_logical_bytes or 0) / (1024**3) if getattr(table_row, "total_logical_bytes", None) else None
     title = f"{dataset}.{table_name}"
     description = (
         f"BigQuery public table `{full_ref}`. "
