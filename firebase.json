@@ -1,0 +1,9 @@
+{
+  "functions": [
+    {
+      "source": "infra/functions/on_user_created",
+      "codebase": "on-user-created",
+      "runtime": "python312"
+    }
+  ]
+}

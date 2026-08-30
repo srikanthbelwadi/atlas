@@ -20,6 +20,16 @@ const EXAMPLES = [
   "What are the most common types of crime reported in Chicago?",
   "What was the most popular baby name in the United States in 2020?",
   "Which candidates raised the most money in federal campaign contributions recently?",
+  // Added after the Q2/Q3/Q4/Q6/Q7 backend fix pass: California unemployment
+  // now routes correctly (bls.unemployment_cps) and returns a real, cited
+  // figure on the first attempt. Japan/US life expectancy (Q2), Austin
+  // median income (Q3), India GDP per capita (Q4), and the EV search-trend
+  // question (Q6) are deliberately NOT added here — each still fails for a
+  // real, understood reason (a data-coverage or schema-shape gap, not a
+  // crash) documented in /home/claude/test_results.md and IMPLEMENTATION.md,
+  // and a suggestion chip should only ever point at a question Atlas can
+  // actually answer well.
+  "What is the unemployment rate in California?",
 ];
 
 interface Props {
@@ -42,6 +52,19 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
   const submit = async (q: string) => {
     if (!q.trim() || busy) return;
     onStart();
+    // Clear the input immediately on submit — before this, `question` was
+    // only ever updated by onChange and never reset, so leftover text sat
+    // in the box after a question finished. A user who then clicked back
+    // into the box and typed a follow-up question got their new text
+    // inserted at whatever the click's cursor position landed on, silently
+    // producing a garbled concatenation of the old and new questions that
+    // got submitted as one string on the next Enter/Ask — found live while
+    // testing (an "India's GDP" question came back empty because it had
+    // actually been submitted glued onto a leftover Japan/US life
+    // expectancy question). Clearing here, right when the text is handed
+    // off to the request, is the fix: by the time the user can click back
+    // into the box, it's already empty.
+    setQuestion("");
     // Tracks whether the stream ever sent a recognized terminal event, so we
     // can tell a clean finish apart from the stream just ending. Without
     // this, a response that closes early — a proxy timeout, a server crash

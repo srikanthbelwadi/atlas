@@ -82,6 +82,33 @@ After step 8, copy the printed Cloud Run URL into
 Hosting picks up the change on its next deploy once it's connected (next
 section).
 
+```bash
+# 10. Weekly re-crawl: have Cloud Scheduler invoke the crawler's Cloud Run
+#     Job on a schedule instead of re-running step 9's last line by hand.
+#     Needs a service account with permission to invoke Cloud Run Jobs —
+#     the Compute Engine default service account (used implicitly above)
+#     already has this in a fresh project; tighten it to a dedicated SA
+#     later if desired.
+gcloud scheduler jobs create http atlas-crawler-weekly \
+  --project=atlas-ard-okf --location=us-central1 \
+  --schedule="0 6 * * 1" \
+  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/atlas-ard-okf/jobs/atlas-crawler:run" \
+  --http-method=POST \
+  --oauth-service-account-email="$(gcloud projects describe atlas-ard-okf --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+
+# 11. Admin sign-up notification: emails ATLAS_ADMIN_EMAILS when a new
+#     users/{uid} doc lands as status="pending" (infra/functions/on_user_created).
+#     One-time: install firebase-tools if you don't have it, and set the
+#     SMTP password as a secret (never a plain env var / never committed).
+npm install -g firebase-tools
+firebase functions:secrets:set ATLAS_SMTP_PASSWORD --project=atlas-ard-okf
+
+# Then, every deploy: copy infra/functions/on_user_created/.env.example to
+# infra/functions/on_user_created/.env (gitignored) with real, non-secret
+# values (admin emails, SMTP host/user), and deploy:
+firebase deploy --only functions --project=atlas-ard-okf
+```
+
 ## Connecting the frontend (after step 6 above)
 
 In the Firebase console: **App Hosting → Get started → region us-central1 →
@@ -98,15 +125,9 @@ it (see `.github/workflows/deploy-frontend.yml`'s docstring).
   Registry deploys without a long-lived service-account key
   (`.github/workflows/deploy-backend.yml` / `catalog-refresh.yml` currently
   placeholders pending this — steps 8/9 above are the manual equivalent)
-- **`on_user_created` Cloud Function**: Firestore trigger on `users/{uid}`
-  create with `status: pending`, emails `ATLAS_ADMIN_EMAILS` (Firebase
-  "Trigger Email" extension, SendGrid-backed, or a plain `smtplib` call from
-  a 2nd-gen Cloud Function) — referenced in `backend/orchestrator/main.py`'s
-  docstring, not yet built
-- **Cloud Scheduler job** to invoke the crawler's Cloud Run Job weekly
-  (`gcloud scheduler jobs create http ... --uri=.../jobs/atlas-crawler:run`)
-  — the crawler image and job exist after step 9 above, this just automates
-  the recurring re-run
 - Add the App Hosting backend's live URL to Firebase Auth's **authorized
   domains** list (Authentication → Settings) once it exists, or Google
   sign-in will reject it
+
+Both the `on_user_created` admin-notification Cloud Function and the weekly
+Cloud Scheduler re-crawl are now built — see steps 10/11 above.

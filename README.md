@@ -1,10 +1,14 @@
 # Atlas
 
-A natural-language front door to every public BigQuery dataset — wrapped in ARD/OKF discovery, answered by Gemini, and grown from [Resource Raiser](https://github.com/TechSoup/resource-raiser)'s discover → plan → fetch → check → synthesize engine.
+A natural-language front door to every public BigQuery dataset — wrapped in
+[ARD](https://agenticresourcediscovery.org/spec/)/[OKF](https://okf.md/spec/)
+discovery, answered by Gemini, and grown from
+[Resource Raiser](https://github.com/TechSoup/resource-raiser)'s
+discover → plan → fetch → check → synthesize engine.
 
 This repository is a derivative work of TechSoup's Resource Raiser (Apache License 2.0). Original copyright and license notices are retained in `THIRD_PARTY_NOTICES.md` as required by that license.
 
-See the full implementation plan for architecture, the ARD/OKF wrapper design over BigQuery public datasets, the live query trace, access control, and the deployment pipeline.
+See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/OKF wrapper over BigQuery public datasets, life of a query end to end, cost guardrails, grounding/citation model, the live reasoning trace, and exactly what was kept vs. replaced vs. newly built relative to Resource Raiser.
 
 ## Layout
 
@@ -24,11 +28,13 @@ See the full implementation plan for architecture, the ARD/OKF wrapper design ov
 - [x] Firebase Auth: Google sign-in enabled; web app registered, its config baked into `frontend/apphosting.yaml`
 - [x] Backend orchestrator (Phase 1): discover → plan → fetch → check → synthesize pipeline with live SSE trace, guarded BigQuery executor (dry-run byte cap + hard `maximum_bytes_billed` + wall-clock timeout), Firestore-backed per-user monthly budget ceiling, Firebase-Auth-gated `/ask` + admin approval console API
 - [x] Orchestrator deployed to Cloud Run (`atlas-orchestrator`), confirmed live at `https://atlas-orchestrator-653988957394.us-central1.run.app`
-- [x] `backend/crawler/` — curated-target BigQuery enumeration into `ard_catalog.embeddings` (Cloud Run Job `atlas-crawler`), confirmed working end to end: 614 rows across the 14 curated datasets, spot-checked with real title/description/column-list text. Three real bugs found and fixed by actually running it, not just reading the code: (1) BigQuery rejects `NOT NULL` on the `embedding ARRAY<FLOAT64>` column; (2) `INFORMATION_SCHEMA.COLUMNS` has no `description` field (that's a different view, `COLUMN_FIELD_PATHS`); (3) a dead reference to a `total_bytes` row field that neither `INFORMATION_SCHEMA.TABLE_STORAGE` nor its `TABLES` fallback ever selects — each bug was hidden behind the previous one in the same function until the one before it got fixed. All three fixed in `backend/crawler/main.py`.
+- [x] `backend/crawler/` — curated-target BigQuery enumeration into `ard_catalog.embeddings` (Cloud Run Job `atlas-crawler`); first run hit a real bug (BigQuery rejects `NOT NULL` on the `embedding ARRAY<FLOAT64>` column — fixed in `backend/crawler/main.py` and `infra/setup.sql`), rerun triggered after the fix
 - [x] `frontend/` — Next.js app: Google sign-in gate, ask bar, live query trace panel, adaptive answer canvas (table/bar/line/kpi cards/infographic), admin approval console — type-checks and builds clean
 - [x] GitHub Actions workflows written (`deploy-backend.yml`, `deploy-frontend.yml` CI, `catalog-refresh.yml`) — blocked on Workload Identity Federation (see `infra/README.md`); manual Cloud Build equivalents (`infra/cloudbuild-*.yaml`) work today
-- [x] Firebase App Hosting backend `atlas-web` created via `firebase apphosting:backends:create`, connected to `srikanthbelwadi/atlas`'s `main` branch (nodejs22 runtime). First rollout succeeded and is live at `https://atlas-web--atlas-ard-okf.us-central1.hosted.app` — confirmed rendering the sign-in gate cleanly (no console errors, all assets 200). That hostname is added to Firebase Auth's authorized domains so Google sign-in works there.
-- [ ] `on_user_created` Cloud Function, Workload Identity Federation for CI/CD, Cloud Scheduler for the weekly crawl (see "Still to design/build" in `infra/README.md`) — the only remaining items; orchestrator, crawler, and frontend are all live and verified
+- [x] Firebase App Hosting backend `atlas-web` created via `firebase apphosting:backends:create`, connected to `srikanthbelwadi/atlas`'s `main` branch (nodejs22 runtime), first rollout triggered — live at `https://atlas-web--atlas-ard-okf.us-central1.hosted.app` once the rollout finishes; that hostname is added to Firebase Auth's authorized domains so Google sign-in works there
+- [x] `on_user_created` Cloud Function (`infra/functions/on_user_created`) — emails `ATLAS_ADMIN_EMAILS` when a new `users/{uid}` doc lands as `status: pending`; deploy steps in `infra/README.md`
+- [x] Cloud Scheduler job for the weekly crawler re-run — command in `infra/README.md`
+- [ ] Workload Identity Federation for CI/CD (see "Still to design/build" in `infra/README.md`)
 
 **No Vercel anywhere in this stack.** The frontend is a standard Next.js app, which is what Vercel is best known for hosting, but it deploys to **Firebase App Hosting** (which runs it on Cloud Run under the hood) — nothing in `frontend/` references Vercel, and `apphosting.yaml` is Firebase's own config format, not Vercel's.
 
@@ -42,7 +48,7 @@ See the full implementation plan for architecture, the ARD/OKF wrapper design ov
 
 `backend/accessor/bigquery_accessor.py` never runs SQL without a preceding dry run against the caller's byte cap, and always sets `maximum_bytes_billed` on the real job as a server-side backstop. `backend/orchestrator/guardrails.py` tracks each user's month-to-date estimated spend in Firestore and blocks new queries once the $100/user ceiling is hit. `okf-catalog/` has two worked examples: a crawler-style `Table` doc (`bigquery-public-data.covid19_open_data`) and a human-reviewed `AttestedComputation` template (case rate by county/year) — the trusted, parameterized-SQL path the plan calls out as the preferred route whenever a question fits a known shape.
 
-Not yet wired: the `on_user_created` Cloud Function that emails the admin when `users/{uid}` is created with `status: pending` (referenced in `main.py`'s docstring, lives under `infra/functions/` once built), and the generic OKF-driven fetcher for non-BigQuery sources ported from Resource Raiser.
+Not yet wired: the generic OKF-driven fetcher for non-BigQuery sources ported from Resource Raiser (`_fetch_one()` in `pipeline.py` has a stub branch for it today). The `on_user_created` Cloud Function referenced in `main.py`'s docstring is now built — see `infra/functions/on_user_created/`.
 
 ### Crawler
 
@@ -55,4 +61,11 @@ Not yet wired: the `on_user_created` Cloud Function that emails the admin when `
 - `app/page.tsx` — the ask experience: `AskBar` posts to `/ask` and streams the SSE response by hand (native `EventSource` can't carry the Firebase ID token the backend requires), `TracePanel` renders the live query trace as a stage-by-stage timeline, `AnswerCanvas` renders the narrative + citations + whichever visualization kind the synthesis model chose (table, bar, line, KPI cards, infographic; map falls back to a table until a mapping library is wired in).
 - `app/admin/page.tsx` — the approval console: lists pending/approved/rejected users, approve/reject buttons calling the backend's `/admin/*` API. No separate admin auth scheme — same Firebase ID token, checked server-side against `ATLAS_ADMIN_EMAILS`.
 - Design system: IBM Plex Serif/Sans/Mono, a navy/amber/teal palette defined as CSS custom properties in `app/globals.css` with a `prefers-color-scheme: dark` variant.
-- `npm install && npx tsc --noEmit && npx next build` all pass as of this commit, and the deployed build renders and loads clean in production (verified via browser: no console errors, all network requests 200).
+- `npm install && npx tsc --noEmit && npx next build` all pass as of this commit. Per the "web only, never local" instruction, this has been verified to *build* correctly but not run in a browser yet — that happens once it's deployed to an App Hosting preview channel.
+
+## References
+
+- **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** — the discovery-side specification `discovery.py`'s candidate resolution is modeled on: resources described once, indexed by a registry, and searched rather than manually wired up. Spec repository: [ards-project/ard-spec](https://github.com/ards-project/ard-spec).
+- **[Open Knowledge Format (OKF)](https://okf.md/spec/)** — the markdown-with-YAML-frontmatter format `okf-catalog/` is written in, including the three-tier trust model (`unverified` / `machine-confirmed` / `human-reviewed`) surfaced throughout the pipeline and UI. Reference tooling: [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog); announcement: [Google Cloud Blog](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
+- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** — the discover → plan → fetch → check → synthesize pipeline this project forks and re-targets at public BigQuery datasets. See `THIRD_PARTY_NOTICES.md` for the Apache-2.0 notice and a summary of what changed.
+- **`IMPLEMENTATION.md`** — this project's own engineering documentation: architecture, tech stack, life of a query, cost/guardrail design, grounding and citations, the live reasoning trace, and a detailed fork-vs-new-work breakdown against Resource Raiser.
