@@ -7,6 +7,7 @@ import AskBar from "@/components/AskBar";
 import TracePanel from "@/components/TracePanel";
 import AnswerCanvas from "@/components/AnswerCanvas";
 import WalkthroughPanel from "@/components/Walkthrough";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { Answer, TraceEvent, Walkthrough } from "@/lib/types";
 
 export default function Home() {
@@ -68,9 +69,17 @@ export default function Home() {
 
           <TracePanel events={events} />
 
-          {answer && <AnswerCanvas answer={answer} />}
+          {answer && (
+            <ErrorBoundary label="answer">
+              <AnswerCanvas answer={answer} />
+            </ErrorBoundary>
+          )}
 
-          {walkthrough && <WalkthroughPanel walkthrough={walkthrough} />}
+          {walkthrough && (
+            <ErrorBoundary label="walkthrough">
+              <WalkthroughPanel walkthrough={walkthrough} />
+            </ErrorBoundary>
+          )}
         </main>
       </SignInGate>
     </>

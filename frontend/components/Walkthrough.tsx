@@ -11,7 +11,8 @@ import { Walkthrough as WalkthroughData, WalkthroughQuery, TokenUsage } from "@/
 // Shown regardless of whether the question ultimately succeeded — a failed
 // run should be just as inspectable as a successful one.
 
-function fmtBytes(n: number): string {
+function fmtBytes(n: number | undefined | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
@@ -91,6 +92,15 @@ function QueryCard({ q }: { q: WalkthroughQuery }) {
 export default function Walkthrough({ walkthrough }: { walkthrough: WalkthroughData }) {
   const w = walkthrough;
   const cost = w.cost;
+  // Defensive: every one of these is populated unconditionally in
+  // pipeline.py, but a `.length` read on a genuinely missing field is
+  // exactly the crash this page hit in testing (white-screening the whole
+  // app, not just this panel) — so don't trust the wire shape blindly.
+  const sourcesConsidered = w.sources_considered ?? [];
+  const backtracks = w.backtracks ?? [];
+  const queriesExecuted = w.queries_executed ?? [];
+  const tokenUsage = w.token_usage ?? {};
+  const totalBytesBilled = queriesExecuted.reduce((sum, q) => sum + (q.bytes_billed ?? 0), 0);
 
   return (
     <details
@@ -122,11 +132,11 @@ export default function Walkthrough({ walkthrough }: { walkthrough: WalkthroughD
 
       <div style={{ padding: "0 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
         <Section title="Sources considered">
-          {w.sources_considered.length === 0 ? (
+          {sourcesConsidered.length === 0 ? (
             <div style={{ fontSize: "0.85rem", color: "var(--ink-dim)" }}>None matched this question.</div>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {w.sources_considered.map((s) => {
+              {sourcesConsidered.map((s) => {
                 const used = w.source_used?.id === s.source_id;
                 return (
                   <span
@@ -142,7 +152,7 @@ export default function Walkthrough({ walkthrough }: { walkthrough: WalkthroughD
                       color: used ? "var(--accent)" : "var(--ink-dim)",
                     }}
                   >
-                    {s.title} · {s.score.toFixed(2)}
+                    {s.title} · {(s.score ?? 0).toFixed(2)}
                     {used ? " · used" : ""}
                   </span>
                 );
@@ -151,10 +161,10 @@ export default function Walkthrough({ walkthrough }: { walkthrough: WalkthroughD
           )}
         </Section>
 
-        {w.backtracks.length > 0 && (
+        {backtracks.length > 0 && (
           <Section title="Backtracks">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {w.backtracks.map((b, i) => (
+              {backtracks.map((b, i) => (
                 <div key={i} style={{ fontSize: "0.82rem", color: "var(--danger)" }}>
                   Gave up on <span className="mono">{b.from}</span> — {b.reason}
                 </div>
@@ -163,10 +173,10 @@ export default function Walkthrough({ walkthrough }: { walkthrough: WalkthroughD
           </Section>
         )}
 
-        {w.queries_executed.length > 0 && (
+        {queriesExecuted.length > 0 && (
           <Section title="Queries executed">
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {w.queries_executed.map((q, i) => (
+              {queriesExecuted.map((q, i) => (
                 <QueryCard key={i} q={q} />
               ))}
             </div>
@@ -178,23 +188,21 @@ export default function Walkthrough({ walkthrough }: { walkthrough: WalkthroughD
             <div style={{ fontSize: "0.82rem" }}>
               <div style={{ color: "var(--ink-dim)", fontSize: "0.74rem" }}>Planner</div>
               <div className="mono" style={{ fontVariantNumeric: "tabular-nums" }}>
-                {fmtTokens(w.token_usage.plan)}
+                {fmtTokens(tokenUsage.plan)}
               </div>
               {cost && <div style={{ color: "var(--ink-dim)", fontSize: "0.74rem" }}>${cost.plan_cost_usd.toFixed(4)}</div>}
             </div>
             <div style={{ fontSize: "0.82rem" }}>
               <div style={{ color: "var(--ink-dim)", fontSize: "0.74rem" }}>Synthesis</div>
               <div className="mono" style={{ fontVariantNumeric: "tabular-nums" }}>
-                {fmtTokens(w.token_usage.synthesize)}
+                {fmtTokens(tokenUsage.synthesize)}
               </div>
               {cost && <div style={{ color: "var(--ink-dim)", fontSize: "0.74rem" }}>${cost.synth_cost_usd.toFixed(4)}</div>}
             </div>
             <div style={{ fontSize: "0.82rem" }}>
               <div style={{ color: "var(--ink-dim)", fontSize: "0.74rem" }}>BigQuery</div>
               <div className="mono" style={{ fontVariantNumeric: "tabular-nums" }}>
-                {w.queries_executed.reduce((sum, q) => sum + q.bytes_billed, 0) > 0
-                  ? fmtBytes(w.queries_executed.reduce((sum, q) => sum + q.bytes_billed, 0))
-                  : "—"}
+                {totalBytesBilled > 0 ? fmtBytes(totalBytesBilled) : "—"}
               </div>
               {cost && <div style={{ color: "var(--ink-dim)", fontSize: "0.74rem" }}>${cost.bq_cost_usd.toFixed(4)}</div>}
             </div>

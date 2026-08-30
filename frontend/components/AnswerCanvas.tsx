@@ -182,7 +182,13 @@ const VIZ_COMPONENTS: Record<string, (props: { data: string }) => JSX.Element> =
 };
 
 export default function AnswerCanvas({ answer }: { answer: Answer }) {
-  const Viz = VIZ_COMPONENTS[answer.visualization.kind] || TableViz;
+  // Defensive: the synthesis model's structured output is schema-validated
+  // server-side, but a bare `.citations`/`.visualization` access would still
+  // white-screen the whole page on any unexpected shape (a proxy truncating
+  // the response, a future schema change). Fall back to something renderable.
+  const citations = answer.citations ?? [];
+  const visualization = answer.visualization ?? { kind: "table", data: "[]" };
+  const Viz = VIZ_COMPONENTS[visualization.kind] || TableViz;
 
   return (
     <div
@@ -198,11 +204,11 @@ export default function AnswerCanvas({ answer }: { answer: Answer }) {
     >
       <p style={{ fontSize: "1.05rem", margin: 0, lineHeight: 1.65 }}>{answer.narrative}</p>
 
-      <Viz data={answer.visualization.data} />
+      <Viz data={visualization.data} />
 
-      {answer.citations.length > 0 && (
+      {citations.length > 0 && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {answer.citations.map((c) => (
+          {citations.map((c) => (
             <span
               key={c.source_id}
               className="mono"
