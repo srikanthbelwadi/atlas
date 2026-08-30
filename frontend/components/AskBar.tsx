@@ -8,11 +8,18 @@ import { Answer, TraceEvent } from "@/lib/types";
 const EXAMPLES = [
   "How did COVID case rates change by year in Alameda County, CA?",
   "Which US counties had the worst air quality last year?",
-  "What's the population trend in San Francisco over the last decade?",
+  // A third "original" question — San Francisco's population trend over the
+  // last decade — was removed here after live verification: the only
+  // population sources in the catalog are single-vintage ACS 5-year
+  // estimates, so it backtracks through every candidate and returns an
+  // honest "couldn't find a dataset" rather than a real trend. A genuine
+  // data-coverage gap, not a bug, so it doesn't belong as a suggestion chip
+  // (same standard as the Q2/Q3/Q4/Q6 questions excluded below).
+  //
   // Every one of these five passed a live 10-question evaluation of backend
   // routing + frontend rendering end to end — no crashes, correct and
   // well-cited answers (see /home/claude/test_results.md for the full run,
-  // including the 5 that failed and why). Together with the three originals
+  // including the 5 that failed and why). Together with the two originals
   // above they cover all four viz kinds currently wired up: line/template,
   // single-stat KPI, multi-stat KPI grid, and a many-category bar chart.
   "How did COVID-19 case rates change over time in Los Angeles County, CA?",
