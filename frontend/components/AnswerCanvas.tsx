@@ -62,6 +62,15 @@ function TableViz({ data }: { data: string }) {
   );
 }
 
+function fmtBarValue(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  // Synthesis hands back raw floats straight off a BigQuery aggregate
+  // (e.g. 24556.895695) — fine for the narrative's own rounding, but ugly
+  // stacked directly over a bar. One decimal place under 100, none above,
+  // with thousands separators so a 5-digit AQI reads at a glance.
+  return v.toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 100 ? 1 : 0 });
+}
+
 function BarViz({ data }: { data: string }) {
   const parsed = safeParse<Partial<{ labels: string[]; values: number[]; label?: string }>>(data, {});
   const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
@@ -71,19 +80,37 @@ function BarViz({ data }: { data: string }) {
   const width = 640;
   const height = 220;
   const barWidth = width / labels.length;
+  // A category label routinely runs longer than the ~64px a bar gets when
+  // there are several of them (county/state names, e.g. "Providence, Rhode
+  // Island") — confirmed live: a 10-bar ranking rendered with every label
+  // overlapping its neighbors, and the first one clipped at the left edge
+  // ("ence, Rhode Island" instead of "Providence..."). Past a handful of
+  // bars, angle the labels instead of centering them under each bar — each
+  // one gets much more room without needing the bars themselves to widen.
+  const manyLabels = labels.length > 4;
+  const bottomMargin = manyLabels ? 110 : 30;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height + 30}`} style={{ width: "100%", height: "auto" }}>
+    <svg viewBox={`0 0 ${width} ${height + bottomMargin}`} style={{ width: "100%", height: "auto" }}>
       {values.map((v, i) => {
         const h = (v / max) * height;
+        const cx = i * barWidth + barWidth / 2;
+        const labelY = height + (manyLabels ? 14 : 18);
         return (
           <g key={i}>
             <rect x={i * barWidth + barWidth * 0.15} y={height - h} width={barWidth * 0.7} height={h} fill="var(--accent)" rx={3} />
-            <text x={i * barWidth + barWidth / 2} y={height + 18} textAnchor="middle" fontSize="11" fill="var(--ink-dim)">
+            <text
+              x={cx}
+              y={labelY}
+              textAnchor={manyLabels ? "end" : "middle"}
+              fontSize="11"
+              fill="var(--ink-dim)"
+              transform={manyLabels ? `rotate(-40 ${cx} ${labelY})` : undefined}
+            >
               {labels[i]}
             </text>
-            <text x={i * barWidth + barWidth / 2} y={height - h - 6} textAnchor="middle" fontSize="11" fill="var(--ink)" className="mono">
-              {v}
+            <text x={cx} y={height - h - 6} textAnchor="middle" fontSize="11" fill="var(--ink)" className="mono">
+              {fmtBarValue(v)}
             </text>
           </g>
         );
