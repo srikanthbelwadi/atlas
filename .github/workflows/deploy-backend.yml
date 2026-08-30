@@ -1,0 +1,61 @@
+# Deploys the orchestrator to Cloud Run on every push to main that touches
+# backend/orchestrator/ or backend/accessor/.
+#
+# NOT YET LIVE: needs Workload Identity Federation set up (see infra/README.md
+# "Still to design/build") so this workflow can authenticate to Google Cloud
+# without a long-lived service-account key. Until GCP_WORKLOAD_IDENTITY_PROVIDER
+# and GCP_SERVICE_ACCOUNT repo secrets exist, `google-github-actions/auth` below
+# fails fast and the job goes red — which is the intended signal that WIF isn't
+# wired up yet, not a bug in this file.
+
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/orchestrator/**"
+      - "backend/accessor/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch: {}
+
+env:
+  PROJECT_ID: atlas-ard-okf
+  REGION: us-central1
+  SERVICE: atlas-orchestrator
+  IMAGE: us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-orchestrator
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for WIF
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build
+        run: docker build -f backend/orchestrator/Dockerfile -t ${{ env.IMAGE }}:${{ github.sha }} .
+
+      - name: Push
+        run: docker push ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --project=${{ env.PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --allow-unauthenticated \
+            --set-env-vars=GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},VERTEX_LOCATION=${{ env.REGION }}

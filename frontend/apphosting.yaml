@@ -1,0 +1,43 @@
+# Firebase App Hosting build/runtime config for the Next.js frontend.
+# Docs: https://firebase.google.com/docs/app-hosting/configure
+#
+# Secrets (Firebase web config, backend URL) are NOT hardcoded here — set
+# them once via `firebase apphosting:secrets:set <NAME>` and reference them
+# below, so nothing sensitive lives in git. The Firebase web config values
+# (apiKey, etc.) aren't actually secret in the security sense — they're safe
+# to ship to the browser — but routing them through App Hosting's env
+# mechanism keeps one deploy path instead of two.
+
+runConfig:
+  minInstances: 0
+  maxInstances: 3
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  - variable: NEXT_PUBLIC_ATLAS_API_BASE_URL
+    value: https://atlas-orchestrator-REPLACE.run.app
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    secret: atlas-firebase-api-key
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: atlas-ard-okf.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: atlas-ard-okf
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    secret: atlas-firebase-app-id
+    availability:
+      - BUILD
+      - RUNTIME
