@@ -43,6 +43,13 @@ function noteFor(stage: string, events: TraceEvent[]): string | null {
       return String(last.data.message || "Blocked by a budget guardrail");
     case "fetch.done":
       return `${last.data.rows} row${last.data.rows === 1 ? "" : "s"} · ${((last.data.bytes_billed as number) / 1024 ** 2).toFixed(1)} MB scanned`;
+    case "fetch.progress":
+      // Emitted by pipeline.py when a fetch attempt is blocked, times out, or
+      // throws for any other reason (e.g. a planner-picked template missing
+      // a required parameter) — previously silently dropped by the
+      // `default: return null` case below, so a backtrack looked like
+      // nothing had happened until the next stage's event arrived.
+      return String(last.data.note || "Fetch attempt didn't complete");
     case "check.done":
       return last.data.ok ? `${last.data.row_count} rows look usable` : `Rejected: ${last.data.reason}`;
     case "check.backtrack":

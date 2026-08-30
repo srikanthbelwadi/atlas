@@ -16,7 +16,12 @@ interface Props {
   onStart: () => void;
   onEvent: (event: TraceEvent) => void;
   onAnswer: (answer: Answer) => void;
-  onError: (message: string) => void;
+  // `errorData` carries the raw "error" event payload (which includes
+  // `walkthrough` — see pipeline.py) when there was one, so the caller can
+  // still show a full walkthrough on a failed question, not just the
+  // message. It's null for client-side failures (auth, network) that never
+  // reached the backend and so have no walkthrough to show.
+  onError: (message: string, errorData: Record<string, unknown> | null) => void;
 }
 
 export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Props) {
@@ -26,17 +31,38 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
   const submit = async (q: string) => {
     if (!q.trim() || busy) return;
     onStart();
+    // Tracks whether the stream ever sent a recognized terminal event, so we
+    // can tell a clean finish apart from the stream just ending. Without
+    // this, a response that closes early — a proxy timeout, a server crash
+    // mid-stream, sse-starlette's connection dropping — falls straight
+    // through the for-await loop with no exception thrown, `submit()`
+    // returns normally, and `busy` is never reset by anything: the "Ask"
+    // button is stuck reading "Asking…" forever. Found while debugging the
+    // reported "stuck at Asking..." bug — the backend pipeline had its own
+    // real bug (see pipeline.py/llm.py), but this gap meant even an
+    // unrelated stream hiccup would produce the exact same symptom, so it's
+    // fixed here too as defense in depth.
+    let sawTerminalEvent = false;
     try {
       const token = await getIdToken();
       if (!token) throw new ApiError(401, "Not signed in");
       for await (const event of askStream(q.trim(), token)) {
         onEvent(event);
-        if (event.event === "answer") onAnswer(event.data as unknown as Answer);
-        if (event.event === "error") onError((event.data.message as string) || "Something went wrong.");
+        if (event.event === "answer") {
+          sawTerminalEvent = true;
+          onAnswer(event.data as unknown as Answer);
+        }
+        if (event.event === "error") {
+          sawTerminalEvent = true;
+          onError((event.data.message as string) || "Something went wrong.", event.data);
+        }
+      }
+      if (!sawTerminalEvent) {
+        onError("The connection ended before Atlas finished answering. Try again.", null);
       }
     } catch (err) {
-      if (err instanceof ApiError) onError(err.message);
-      else onError("Couldn't reach Atlas. Try again in a moment.");
+      if (err instanceof ApiError) onError(err.message, null);
+      else onError("Couldn't reach Atlas. Try again in a moment.", null);
     }
   };
 

@@ -47,6 +47,64 @@ export interface Answer {
   citations: Citation[];
   visualization: Visualization;
   elapsed_s: number;
+  walkthrough?: Walkthrough;
+}
+
+// Mirrors the `walkthrough` dict backend/orchestrator/pipeline.py builds up
+// across a run and attaches to BOTH the terminal "answer" event and the
+// terminal "error" event's data — so a question that fails still gets a
+// full account of what Atlas tried, not just a generic message.
+export interface WalkthroughSource {
+  source_id: string;
+  title: string;
+  trust: TrustLevel;
+  score: number;
+}
+
+export interface WalkthroughQuery {
+  source_id: string;
+  sql: string | null;
+  params: Record<string, unknown>;
+  bytes_billed: number;
+  row_count: number;
+}
+
+export interface WalkthroughBacktrack {
+  from: string;
+  reason: string;
+}
+
+export interface TokenUsage {
+  prompt_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+// Matches guardrails.record_usage()'s return dict exactly.
+export interface WalkthroughCost {
+  bq_cost_usd: number;
+  plan_cost_usd: number;
+  synth_cost_usd: number;
+  total_cost_usd: number;
+  plan_tokens: TokenUsage;
+  synth_tokens: TokenUsage;
+}
+
+export interface WalkthroughSourceUsed {
+  id: string;
+  title: string;
+  trust: TrustLevel;
+}
+
+export interface Walkthrough {
+  question: string;
+  sources_considered: WalkthroughSource[];
+  source_used: WalkthroughSourceUsed | null;
+  queries_executed: WalkthroughQuery[];
+  backtracks: WalkthroughBacktrack[];
+  token_usage: { plan?: TokenUsage; synthesize?: TokenUsage };
+  cost: WalkthroughCost | null;
+  elapsed_s: number | null;
 }
 
 export type UserStatus = "pending" | "approved" | "rejected";

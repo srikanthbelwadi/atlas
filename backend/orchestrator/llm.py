@@ -11,11 +11,19 @@ Two model tiers, matching the plan:
 
 Model names are read from env so they can be bumped (e.g. Gemini 3.x) without
 a code change once a new tier is GA on Vertex AI.
+
+Both `classify_and_plan` and `synthesize` return `(result, usage)` — `usage`
+is the real prompt/output/total token counts from the Gemini response's
+`usage_metadata`, threaded through pipeline.py into the per-query walkthrough
+and guardrails.record_usage's cost calculation, instead of a flat per-call
+cost guess.
 """
 import os
 import json
 from google import genai
 from google.genai import types
+
+from ..accessor import okf_loader
 
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "atlas-ard-okf")
 LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
@@ -30,6 +38,22 @@ def client() -> genai.Client:
     if _client is None:
         _client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
     return _client
+
+
+def _usage(resp) -> dict:
+    """Real token counts off `resp.usage_metadata` (confirmed field name on
+    the pinned google-genai==0.7.0 SDK — GenerateContentResponseUsageMetadata
+    has prompt_token_count / candidates_token_count / total_token_count).
+    Falls back to zeros rather than raising if a future SDK bump renames or
+    drops the field, since a missing cost number shouldn't break an answer."""
+    u = getattr(resp, "usage_metadata", None)
+    if u is None:
+        return {"prompt_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    return {
+        "prompt_tokens": u.prompt_token_count or 0,
+        "output_tokens": u.candidates_token_count or 0,
+        "total_tokens": u.total_token_count or 0,
+    }
 
 
 PRESENTATION_SCHEMA = {
@@ -61,26 +85,74 @@ PRESENTATION_SCHEMA = {
 }
 
 
-def classify_and_plan(question: str, candidates: list[dict]) -> dict:
-    """PLAN_MODEL call: question shape + source routing + optional SQL draft."""
+def _describe_candidate_for_planning(c: dict) -> dict:
+    """Candidates arrive from discovery.py as embedding-search results
+    (title/trust/score) with no parameter info attached. For an
+    AttestedComputation candidate specifically, load its full OKF doc so the
+    prompt can list its *declared* parameters (name/type/description) by
+    name.
+
+    Without this, the planner has no way to know what to extract from the
+    question, and every AttestedComputation call fails with
+    bigquery_accessor.run_attested_computation's "Missing required
+    parameter" ValueError — this was a real bug found by actually running a
+    query end to end, not just reading the code: the original prompt asked
+    for {shape, source_id, needs_sql} only and never mentioned parameters at
+    all, so `plan.get("params", {})` was always empty."""
+    out = {"source_id": c["source_id"], "title": c["title"], "type": c.get("type"), "trust": c["trust"]}
+    if c.get("type") == "AttestedComputation":
+        doc = okf_loader.load_by_id(c["source_id"])
+        if doc and doc.computation:
+            out["required_params"] = [
+                {"name": p["name"], "type": p.get("type", "STRING"), "description": p.get("description", "")}
+                for p in doc.computation.get("runtime", {}).get("parameters", [])
+            ]
+    return out
+
+
+def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict]:
+    """PLAN_MODEL call: question shape + source routing + optional SQL draft
+    or template parameter extraction. Returns (plan, usage)."""
+    described = [_describe_candidate_for_planning(c) for c in candidates]
     prompt = (
         "You are Atlas's query planner. Given a user question and a list of "
         "candidate data sources (each already ARD-matched by embedding "
         "similarity), decide the question shape (point, ranking, aggregate, "
-        "trend, status) and which single candidate best answers it. "
-        f"Question: {question!r}\nCandidates: {json.dumps(candidates)}\n"
-        "Respond as JSON: {\"shape\": str, \"source_id\": str, \"needs_sql\": bool}."
+        "trend, status) and which single candidate best answers it.\n\n"
+        "If the chosen candidate has a `required_params` list, it is a "
+        "human-reviewed SQL template (an AttestedComputation) — you MUST "
+        "extract a value for every parameter it lists directly from the "
+        "question's own wording (use each parameter's `description` as a "
+        "guide for the expected format, e.g. a full county name or a "
+        "two-letter state code) and return them under \"params\", keyed by "
+        "parameter name. If the question doesn't actually supply enough "
+        "information for one of that template's required parameters, do "
+        "NOT choose it — pick a different candidate instead, or set "
+        "needs_sql to true and draft ad-hoc SQL against a plain table "
+        "candidate.\n\n"
+        "If you draft ad-hoc SQL for a plain BigQuery table candidate "
+        "(needs_sql: true, no required_params), inline all literal values "
+        "directly in the SQL text — do not use query parameters there — "
+        "and put the SQL under \"sql\".\n\n"
+        f"Question: {question!r}\nCandidates: {json.dumps(described)}\n"
+        "Respond as JSON: {\"shape\": str, \"source_id\": str, "
+        "\"needs_sql\": bool, \"sql\": str or null, \"params\": object}. "
+        "Always include \"params\" — an empty object {} if the chosen "
+        "candidate has no required_params."
     )
     resp = client().models.generate_content(
         model=PLAN_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
-    return json.loads(resp.text)
+    plan = json.loads(resp.text)
+    plan.setdefault("params", {})
+    return plan, _usage(resp)
 
 
-def synthesize(question: str, evidence: dict) -> dict:
-    """SYNTHESIS_MODEL call: grounded answer + citations + presentation spec."""
+def synthesize(question: str, evidence: dict) -> tuple[dict, dict]:
+    """SYNTHESIS_MODEL call: grounded answer + citations + presentation spec.
+    Returns (presentation, usage)."""
     prompt = (
         "You are Atlas. Compose a grounded, cited answer to the user's "
         "question using ONLY the evidence provided — never invent figures. "
@@ -99,7 +171,7 @@ def synthesize(question: str, evidence: dict) -> dict:
             response_schema=PRESENTATION_SCHEMA,
         ),
     )
-    return json.loads(resp.text)
+    return json.loads(resp.text), _usage(resp)
 
 
 def embed(text: str) -> list[float]:
