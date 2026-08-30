@@ -62,12 +62,23 @@ function TableViz({ data }: { data: string }) {
   );
 }
 
-function fmtBarValue(v: number): string {
+function fmtBarValue(v: number, compact: boolean): string {
   if (!Number.isFinite(v)) return "—";
   // Synthesis hands back raw floats straight off a BigQuery aggregate
   // (e.g. 24556.895695) — fine for the narrative's own rounding, but ugly
   // stacked directly over a bar. One decimal place under 100, none above,
   // with thousands separators so a 5-digit AQI reads at a glance.
+  //
+  // Confirmed live: a 10-candidate campaign-finance ranking rendered value
+  // labels like "124,562,872" and "221,396,929" directly above adjacent
+  // ~64px-wide bars — each label far wider than the bar it sits over, so
+  // neighboring labels overlapped into unreadable runs ("221,396,92109,-
+  // 950,022..."). Full precision doesn't fit once there are more than a
+  // handful of bars, so fall back to compact notation ("736.5M") there —
+  // narrow enough to clear the gap even for 9-figure values.
+  if (compact) {
+    return Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(v);
+  }
   return v.toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 100 ? 1 : 0 });
 }
 
@@ -89,9 +100,18 @@ function BarViz({ data }: { data: string }) {
   // one gets much more room without needing the bars themselves to widen.
   const manyLabels = labels.length > 4;
   const bottomMargin = manyLabels ? 110 : 30;
+  // The rotated first label is anchored "end" at its bar's center and swings
+  // up-left as it rotates, so it routinely extends past x=0 — confirmed live
+  // ("BIDEN, JOSEPH R JR" rendered as ".PH R JR", the leading two-thirds cut
+  // off by the viewBox edge exactly like the line-chart edge-label clip
+  // fixed earlier). Padding the viewBox on both sides (without moving any
+  // bar or label's own x, which all still count from the original 0..width)
+  // gives that swing room to render on-canvas instead of changing the anchor
+  // math per-bar.
+  const sidePad = manyLabels ? 40 : 0;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height + bottomMargin}`} style={{ width: "100%", height: "auto" }}>
+    <svg viewBox={`${-sidePad} 0 ${width + sidePad * 2} ${height + bottomMargin}`} style={{ width: "100%", height: "auto" }}>
       {values.map((v, i) => {
         const h = (v / max) * height;
         const cx = i * barWidth + barWidth / 2;
@@ -110,7 +130,7 @@ function BarViz({ data }: { data: string }) {
               {labels[i]}
             </text>
             <text x={cx} y={height - h - 6} textAnchor="middle" fontSize="11" fill="var(--ink)" className="mono">
-              {fmtBarValue(v)}
+              {fmtBarValue(v, manyLabels)}
             </text>
           </g>
         );

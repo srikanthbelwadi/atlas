@@ -9,6 +9,14 @@ const EXAMPLES = [
   "How did COVID case rates change by year in Alameda County, CA?",
   "Which US counties had the worst air quality last year?",
   "What's the population trend in San Francisco over the last decade?",
+  // Added after a 10-question live evaluation of backend routing + frontend
+  // rendering (see /home/claude/test_results.md) — these three passed end
+  // to end with no crashes and a correct, well-cited answer, and between
+  // them exercise the three viz shapes the original examples didn't: a
+  // single-stat KPI, a multi-stat KPI grid, and a many-category bar chart.
+  "What was the average temperature in Chicago in 2023?",
+  "What are the most common types of crime reported in Chicago?",
+  "Which candidates raised the most money in federal campaign contributions recently?",
 ];
 
 interface Props {
