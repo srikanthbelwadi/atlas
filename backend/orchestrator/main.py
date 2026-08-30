@@ -20,6 +20,11 @@ New-user handling (plan §08): the first time a verified token's uid has no
 Cloud Function (infra/functions/on_user_created, deployed separately) reacts
 to that document creation to email the admin — kept out of the request path
 here so a slow mail send never adds latency to the user's first sign-in.
+
+Exception: any email listed in ATLAS_PREAPPROVED_EMAILS skips the queue
+entirely and is marked "approved" immediately, on both the create path and
+(for an email added to the list after that user's first sign-in) the
+existing-doc path — see require_approved_user() below.
 """
 import os
 
@@ -32,6 +37,11 @@ from firebase_admin import auth as firebase_auth, credentials, firestore as fb_f
 from . import pipeline
 
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ATLAS_ADMIN_EMAILS", "srikanthbelwadi@gmail.com").split(",") if e.strip()}
+# Accounts that skip the manual approval queue entirely — same allowlist
+# shape as ADMIN_EMAILS, but these accounts still show up in the admin
+# console as regular "approved" users, not admins. Empty by default so a
+# fresh deploy without this env var behaves exactly as before.
+PREAPPROVED_EMAILS = {e.strip().lower() for e in os.environ.get("ATLAS_PREAPPROVED_EMAILS", "").split(",") if e.strip()}
 ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ATLAS_ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 
 _fb_app = initialize_app()
@@ -59,6 +69,7 @@ def _verify_token(authorization: str | None) -> dict:
 def require_approved_user(authorization: str | None = Header(default=None)) -> dict:
     decoded = _verify_token(authorization)
     uid, email = decoded["uid"], decoded.get("email", "")
+    preapproved = email.lower() in PREAPPROVED_EMAILS
     doc_ref = _db.collection("users").document(uid)
     snap = doc_ref.get()
 
@@ -67,13 +78,22 @@ def require_approved_user(authorization: str | None = Header(default=None)) -> d
             "uid": uid,
             "email": email,
             "display_name": decoded.get("name", ""),
-            "status": "pending",
+            "status": "approved" if preapproved else "pending",
             "created_at": fb_firestore.SERVER_TIMESTAMP,
         })
+        if preapproved:
+            return {"uid": uid, "email": email}
         raise HTTPException(status_code=403, detail="Account created — waiting on admin approval.")
 
     status = snap.get("status")
     if status != "approved":
+        # Covers a preapproved email that signed in (and got its doc created
+        # as "pending") before ATLAS_PREAPPROVED_EMAILS included it — flips
+        # it to approved on the next request instead of leaving it stuck
+        # waiting for an admin who was never going to review it.
+        if preapproved:
+            doc_ref.set({"status": "approved"}, merge=True)
+            return {"uid": uid, "email": email}
         raise HTTPException(status_code=403, detail=f"Account status: {status}. Waiting on admin approval.")
 
     return {"uid": uid, "email": email}

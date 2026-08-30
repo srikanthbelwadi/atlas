@@ -112,8 +112,25 @@ def _describe_candidate_for_planning(c: dict) -> dict:
     plausible-sounding ones that don't exist: confirmed live via two
     different BigQuery 400s in the same session — "Unrecognized name:
     mean_aqi" against epa_historical_air_quality.co_daily_summary, and
-    "Unrecognized name: place_name" against census_bureau_acs.cbsa_2010_5yr."""
-    out = {"source_id": c["source_id"], "title": c["title"], "type": c.get("type"), "trust": c["trust"]}
+    "Unrecognized name: place_name" against census_bureau_acs.cbsa_2010_5yr.
+
+    Also forwards discovery's own relevance `score` (0-1, higher = better
+    semantic match) — computed by discovery.py and already shown in the
+    frontend walkthrough, but previously dropped before ever reaching this
+    prompt. That gap was a real bug found live: asked to compare life
+    expectancy in Japan vs. the US, discovery correctly ranked
+    world_bank_health_population.country_summary highest, but with no score
+    visible in the prompt the planner picked covid19_open_data instead —
+    present in the candidate list, superficially plausible from its title
+    alone, but wrong — and fetched Japan's Human Development Index: a real
+    number, just not the one asked about."""
+    out = {
+        "source_id": c["source_id"],
+        "title": c["title"],
+        "type": c.get("type"),
+        "trust": c["trust"],
+        "score": round(c["score"], 3),
+    }
     if c.get("type") == "AttestedComputation":
         doc = okf_loader.load_by_id(c["source_id"])
         if doc and doc.computation:
@@ -130,12 +147,32 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
     """PLAN_MODEL call: question shape + source routing + optional SQL draft
     or template parameter extraction. Returns (plan, usage)."""
     described = [_describe_candidate_for_planning(c) for c in candidates]
+    single_candidate = len(candidates) == 1
     prompt = (
         "You are Atlas's query planner. Given a user question and a list of "
         "candidate data sources (each already ARD-matched by embedding "
         "similarity), decide the question shape (point, ranking, aggregate, "
         "trend, status) and which single candidate best answers it.\n\n"
-        "If the chosen candidate has a `required_params` list, it is a "
+        + (
+            "There is only one candidate here — you are drafting fresh SQL or "
+            "params for it specifically (this is a backtrack retry against a "
+            "different table than was originally tried), so `source_id` in "
+            "your response must be this candidate's.\n\n"
+            if single_candidate else
+            "Candidates are listed in DESCENDING order of `score` (0-1, "
+            "discovery's own embedding-similarity ranking) — the first "
+            "candidate is the best semantic match already. Prefer it unless "
+            "you have a specific, concrete reason it can't answer the "
+            "question (e.g. its `schema` is missing a column the question "
+            "needs, or it has `required_params` the question doesn't supply "
+            "values for) — a lower-scored candidate merely *sounding* more "
+            "on-topic from its title is not a good enough reason to override "
+            "the ranking. Confirmed live: asked to compare life expectancy "
+            "in Japan vs. the US, the top-ranked candidate was the correct "
+            "health/population table, but it got passed over for a "
+            "COVID-data table that had no score attached to weigh against it.\n\n"
+        )
+        + "If the chosen candidate has a `required_params` list, it is a "
         "human-reviewed SQL template (an AttestedComputation) — you MUST "
         "extract a value for every parameter it lists directly from the "
         "question's own wording (use each parameter's `description` as a "
@@ -159,11 +196,35 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
         "or a place table exposes `place_name`) is exactly the mistake this "
         "warns against — both have failed against real tables before. If a "
         "candidate has no `schema` field, do not choose it for ad-hoc SQL.\n\n"
+        "The question might name more than one entity to compare (e.g. "
+        "\"Japan vs. the United States\", \"California and Texas\") — if so, "
+        "your SQL must fetch a row for EVERY named entity (e.g. "
+        "`WHERE country_name IN ('Japan', 'United States')`), never just the "
+        "first one, or the comparison the question actually asked for is "
+        "impossible to answer from what you fetched.\n\n"
+        "When your WHERE clause filters a free-text column that holds "
+        "names, places, or search terms (not a numeric ID or a short coded "
+        "enum), do NOT use exact equality — real-world text data routinely "
+        "doesn't match a user's exact phrasing (e.g. a place-name column may "
+        "store \"Austin city, Texas\" when the question just says \"Austin, "
+        "Texas\"). Use a case-insensitive partial match instead, e.g. "
+        "`LOWER(place_name) LIKE LOWER('%Austin%')`, unless the schema shows "
+        "a shorter coded column for the same thing (a 2-letter state code, "
+        "a FIPS code) — prefer that coded column with its correct code "
+        "value over free-text matching whenever one is available, since an "
+        "exact-match query against a coded column is reliable in a way "
+        "free-text matching on a spelled-out name usually isn't. Confirmed "
+        "live: exact-match SQL against free-text columns returned 0 rows "
+        "for a median-income-by-city question and a state-unemployment "
+        "question, both with real matching data sitting in the table.\n\n"
         f"Question: {question!r}\nCandidates: {json.dumps(described)}\n"
         "Respond as JSON: {\"shape\": str, \"source_id\": str, "
-        "\"needs_sql\": bool, \"sql\": str or null, \"params\": object}. "
-        "Always include \"params\" — an empty object {} if the chosen "
-        "candidate has no required_params."
+        "\"needs_sql\": bool, \"sql\": str or null, \"params\": object, "
+        "\"reasoning\": str}. Always include \"params\" — an empty object {} "
+        "if the chosen candidate has no required_params. \"reasoning\" is "
+        "one plain-language sentence, written for the person who asked the "
+        "question, explaining why you picked this source and this shape for "
+        "it specifically — not a restatement of these instructions."
     )
     resp = client().models.generate_content(
         model=PLAN_MODEL,
@@ -172,6 +233,7 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
     )
     plan = json.loads(resp.text)
     plan.setdefault("params", {})
+    plan.setdefault("reasoning", "")
     return plan, _usage(resp)
 
 

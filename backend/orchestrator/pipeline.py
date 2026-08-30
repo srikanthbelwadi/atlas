@@ -45,6 +45,17 @@ immediately, and so a per-candidate exception (of any kind, not just the two
 specific ones the retry logic originally anticipated) can still backtrack to
 the next candidate — or fail with a specific, real reason — without losing
 any of the trace already emitted.
+
+A THIRD real bug in this same loop, found later (asking about India's GDP
+per capita): `classify_and_plan` was called exactly once, before the loop,
+against `chosen` — but its returned `plan` (including the one `sql` string
+Gemini drafted) was then reused verbatim for every backtrack attempt, even
+though each attempt targets a DIFFERENT candidate with a different real
+schema. SQL drafted for candidate A's columns doesn't fit candidate B's
+table, so backtracking just traded one failure for another, less
+informative one ("Planner marked needs_sql but produced no SQL"). Fixed by
+redrafting a fresh, single-candidate plan for every attempt after the
+first — see the `attempt == 0` check in the loop below.
 """
 import asyncio
 import time
@@ -117,6 +128,7 @@ async def run(question: str, user_id: str):
                 "source_id": chosen["source_id"],
                 "needs_sql": plan.get("needs_sql", False),
                 "tokens": plan_usage,
+                "reasoning": plan.get("reasoning", ""),
             },
         }
 
@@ -130,11 +142,44 @@ async def run(question: str, user_id: str):
         remaining = [chosen] + [c for c in candidates if c["source_id"] != chosen["source_id"]]
 
         for attempt, candidate in enumerate(remaining[: MAX_BACKTRACKS + 1]):
+            # `plan` was drafted once, up front, against `chosen` (attempt 0)
+            # specifically — its `sql`/`params` are only valid for that one
+            # candidate's real schema. Reusing it verbatim on a backtrack
+            # attempt against a DIFFERENT candidate was a real architectural
+            # bug found live: asked about India's GDP per capita, attempt 1
+            # backtracked to a different World Bank table and failed with
+            # "Planner marked needs_sql but produced no SQL" — the SQL in
+            # `plan` was Gemini's answer for the FIRST candidate's columns,
+            # not this one's, so it was either absent or wrong for the table
+            # actually being queried. Fix: redraft a fresh plan scoped to
+            # just this one candidate before fetching from it, for every
+            # attempt after the first — costs one extra fast-tier Gemini
+            # call, only on a backtrack, which is already the slow/failing
+            # path.
+            if attempt == 0:
+                candidate_plan = plan
+            else:
+                yield {"event": "plan.started", "data": {"note": f"redrafting for {candidate['source_id']}"}}
+                candidate_plan, replan_usage = await _to_thread(llm.classify_and_plan, question, [candidate])
+                walkthrough["token_usage"][f"plan_backtrack_{attempt}"] = replan_usage
+                yield {
+                    "event": "plan.done",
+                    "data": {
+                        "elapsed_s": elapsed(),
+                        "shape": candidate_plan.get("shape"),
+                        "source_id": candidate["source_id"],
+                        "needs_sql": candidate_plan.get("needs_sql", False),
+                        "tokens": replan_usage,
+                        "reasoning": candidate_plan.get("reasoning", ""),
+                        "note": "redrafted for this backtrack candidate",
+                    },
+                }
+
             yield {"event": "fetch.started", "data": {"source_id": candidate["source_id"], "attempt": attempt}}
             can_retry = attempt < MAX_BACKTRACKS
 
             try:
-                fetched = await _to_thread(_fetch_one, candidate, plan, question)
+                fetched = await _to_thread(_fetch_one, candidate, candidate_plan, question)
             except guardrails.GuardrailError as exc:
                 yield {"event": "fetch.progress", "data": {"note": f"blocked: {exc.message}"}}
                 walkthrough["backtracks"].append({"from": candidate["source_id"], "reason": exc.code})
@@ -221,13 +266,50 @@ async def run(question: str, user_id: str):
             return
 
         # --- synthesize: grounded narrative + citations + viz (Gemini, pro tier) ---
-        yield {"event": "synthesize.started", "data": {}}
+        # `evidence` is already fully known here (rows fetched, which source,
+        # its trust level), so synthesize.started can say something real
+        # instead of an empty "started" marker — this is the actual reasoning
+        # trace for this stage, not a made-up progress bar, since a single
+        # synchronous model call has no real intermediate progress to report.
+        yield {
+            "event": "synthesize.started",
+            "data": {
+                "note": (
+                    f"Drafting a grounded narrative from {len(evidence['rows'])} row"
+                    f"{'s' if len(evidence['rows']) != 1 else ''} in {evidence['source']['title']}, "
+                    f"to be cited as {evidence['source']['trust']}."
+                )
+            },
+        }
         presentation, synth_usage = await _to_thread(llm.synthesize, question, evidence)
         walkthrough["token_usage"]["synthesize"] = synth_usage
-        yield {"event": "synthesize.progress", "data": {"stage": "composing narrative"}}
+        yield {
+            "event": "synthesize.progress",
+            "data": {
+                "stage": "composing narrative",
+                "note": f"Chose a {presentation.get('visualization', {}).get('kind', 'table')} visualization, {len(presentation.get('citations', []))} citation(s).",
+            },
+        }
+
+        # A backtrack redraft (see the loop above) is a real extra Gemini
+        # call with its own real cost, recorded under its own
+        # "plan_backtrack_N" key in token_usage as it happens. Sum all of
+        # those together with the original "plan" entry here so the combined
+        # total — not just the original single-candidate call — is what
+        # actually gets billed against the monthly budget below.
+        total_plan_usage = {"prompt_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        for key, usage in walkthrough["token_usage"].items():
+            if key == "plan" or key.startswith("plan_backtrack_"):
+                for field in total_plan_usage:
+                    total_plan_usage[field] += usage.get(field, 0)
+        # Overwrite "plan" with the combined total (rather than adding a new
+        # key) so the frontend's existing tokenUsage.plan display — which
+        # only ever reads that one key — shows the real total without
+        # needing its own change to know about backtrack redraft calls.
+        walkthrough["token_usage"]["plan"] = total_plan_usage
 
         cost = await _to_thread(
-            guardrails.record_usage, user_id, bytes_billed, walkthrough["token_usage"].get("plan", {}), synth_usage
+            guardrails.record_usage, user_id, bytes_billed, total_plan_usage, synth_usage
         )
         walkthrough["cost"] = cost
         yield {

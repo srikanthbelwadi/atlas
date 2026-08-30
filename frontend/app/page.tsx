@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Header from "@/components/Header";
 import SignInGate from "@/components/SignInGate";
+import Logo from "@/components/Logo";
 import AskBar from "@/components/AskBar";
 import TracePanel from "@/components/TracePanel";
 import AnswerCanvas from "@/components/AnswerCanvas";
@@ -51,6 +52,16 @@ export default function Home() {
       <Header />
       <SignInGate>
         <main className="container" style={{ padding: "40px 0 80px", display: "flex", flexDirection: "column", gap: 24 }}>
+          {events.length === 0 && !answer && !error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+              <Logo size={32} />
+              <div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: "1.1rem", fontWeight: 600 }}>Atlas</div>
+                <div style={{ fontSize: "0.8rem", color: "var(--ink-dim)" }}>Ask a question, get a cited answer from public data.</div>
+              </div>
+            </div>
+          )}
+
           <AskBar busy={busy} onStart={handleStart} onEvent={handleEvent} onAnswer={handleAnswer} onError={handleError} />
 
           {error && (

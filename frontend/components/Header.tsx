@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import Logo from "@/components/Logo";
 
 export default function Header() {
   const { user, signOutUser } = useAuth();
@@ -13,8 +14,9 @@ export default function Header() {
         padding: "18px 0",
       }}
     >
-      <div className="container" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <Link href="/" style={{ textDecoration: "none", color: "inherit" }}>
+      <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Link href="/" style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
+          <Logo size={26} />
           <h1 style={{ fontSize: "1.35rem" }}>Atlas</h1>
         </Link>
         {user && (
