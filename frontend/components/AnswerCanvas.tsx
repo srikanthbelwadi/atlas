@@ -102,13 +102,17 @@ function BarViz({ data }: { data: string }) {
   const bottomMargin = manyLabels ? 110 : 30;
   // The rotated first label is anchored "end" at its bar's center and swings
   // up-left as it rotates, so it routinely extends past x=0 — confirmed live
-  // ("BIDEN, JOSEPH R JR" rendered as ".PH R JR", the leading two-thirds cut
-  // off by the viewBox edge exactly like the line-chart edge-label clip
-  // fixed earlier). Padding the viewBox on both sides (without moving any
-  // bar or label's own x, which all still count from the original 0..width)
-  // gives that swing room to render on-canvas instead of changing the anchor
-  // math per-bar.
-  const sidePad = manyLabels ? 40 : 0;
+  // TWICE: a flat 40px pad still clipped "BIDEN, JOSEPH R JR" down to "DEN,
+  // JOSEPH R JR" on re-test, because a fixed pad only covers whatever label
+  // happened to be tested, not the actual text. Only the first bar is at
+  // risk (it has the smallest cx, so its own leftward swing is the one that
+  // can cross x=0 — every other bar's cx is larger, so the same swing keeps
+  // it on-canvas), so size the pad off *that* label's length instead of a
+  // constant: ~5.6px/char at font-size 11 approximates a rotated end-anchor
+  // label's horizontal reach well enough in practice, floored so a short
+  // first label still gets some room and capped so a pathological one
+  // doesn't blow up the chart's width.
+  const sidePad = manyLabels ? Math.min(160, Math.max(50, Math.round((labels[0]?.length ?? 0) * 5.6))) : 0;
 
   return (
     <svg viewBox={`${-sidePad} 0 ${width + sidePad * 2} ${height + bottomMargin}`} style={{ width: "100%", height: "auto" }}>

@@ -9,13 +9,16 @@ const EXAMPLES = [
   "How did COVID case rates change by year in Alameda County, CA?",
   "Which US counties had the worst air quality last year?",
   "What's the population trend in San Francisco over the last decade?",
-  // Added after a 10-question live evaluation of backend routing + frontend
-  // rendering (see /home/claude/test_results.md) — these three passed end
-  // to end with no crashes and a correct, well-cited answer, and between
-  // them exercise the three viz shapes the original examples didn't: a
-  // single-stat KPI, a multi-stat KPI grid, and a many-category bar chart.
+  // Every one of these five passed a live 10-question evaluation of backend
+  // routing + frontend rendering end to end — no crashes, correct and
+  // well-cited answers (see /home/claude/test_results.md for the full run,
+  // including the 5 that failed and why). Together with the three originals
+  // above they cover all four viz kinds currently wired up: line/template,
+  // single-stat KPI, multi-stat KPI grid, and a many-category bar chart.
+  "How did COVID-19 case rates change over time in Los Angeles County, CA?",
   "What was the average temperature in Chicago in 2023?",
   "What are the most common types of crime reported in Chicago?",
+  "What was the most popular baby name in the United States in 2020?",
   "Which candidates raised the most money in federal campaign contributions recently?",
 ];
 
