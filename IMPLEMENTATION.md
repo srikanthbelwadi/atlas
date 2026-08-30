@@ -107,8 +107,7 @@ picks one candidate. If the chosen candidate is an OKF `AttestedComputation`
 parameter values from the question's wording — the SQL text itself never
 changes. If it's a plain BigQuery table, the model drafts ad-hoc SQL against
 the real column list the crawler captured (never invented from a table's
-title). The full prompt is reproduced in §7 below alongside the specific
-bugs it was written to fix.
+title).
 
 **Fetch** (`bigquery_accessor.py`) — every query, templated or ad-hoc, goes
 through the same guarded two-step path: a zero-cost BigQuery dry run checks
@@ -123,8 +122,7 @@ alone, is what actually protects the budget.
 handed to synthesis. An empty result or a fetch-time exception triggers a
 **backtrack**: retry against the next-best candidate, up to
 `MAX_BACKTRACKS` (1) additional attempt. Every backtrack redrafts a fresh,
-single-candidate plan rather than reusing the original — see §7.3, the most
-architecturally significant bug found in this pipeline.
+single-candidate plan rather than reusing the original.
 
 **Synthesize** (`llm.py`'s `synthesize`) — a pro-tier Gemini call, given
 only the fetched rows (never the model's own training knowledge), produces
@@ -170,45 +168,7 @@ candidate's fetch empty or failing — Atlas returns an explicit "I couldn't
 find a public dataset that answers this well enough to cite" rather than
 letting synthesis run on nothing, ever.
 
-## 6. Cost optimization and guardrails
-
-Two independent, server-side-only limits (`guardrails.py`), both enforced
-before spend happens rather than measured after:
-
-1. **Per-query byte cap.** A BigQuery dry run estimates bytes scanned before
-   any real query runs. Two tiers: 20 GB for trusted Attested Computation
-   templates, 10 GB for ad-hoc SQL a model drafted — templates get more
-   headroom because their SQL is human-reviewed and known-safe, while
-   freshly-drafted SQL against an unfamiliar table is capped tighter. The
-   estimate is checked *and* the same cap is set as `maximum_bytes_billed`
-   on the real job, because a dry run and the actual scan can legitimately
-   differ.
-
-2. **Per-user monthly ceiling** ($100, configurable via
-   `ATLAS_MONTHLY_COST_CEILING_USD`) — tracked in Firestore
-   (`usage/{uid}_{yyyy-mm}`) as a running estimated-cost total, checked
-   *before* the discover stage even starts. Real cost, not a flat guess:
-   BigQuery bytes billed at the on-demand $6.25/TiB rate, plus actual
-   Gemini `usage_metadata` token counts (prompt/output, priced separately
-   per model tier via env vars — flagged in the code as placeholders to be
-   checked against Vertex AI's current published pricing before relying on
-   them for real budget enforcement).
-
-A backtrack's redrafted plan is a genuine extra Gemini call with its own
-real cost. Early in this pipeline's life that cost would have been silently
-excluded from both the walkthrough's displayed total and the budget-ceiling
-check — found and fixed by summing every `plan` + `plan_backtrack_N` usage
-entry into one total before it's billed (`pipeline.py`), so a question that
-needed two planning attempts is actually charged for two.
-
-The crawler's own design is a cost decision: rather than cataloging all of
-`bigquery-public-data` (thousands of tables, many multi-terabyte), it crawls
-a curated, growable allowlist of ~14 datasets (`backend/crawler/targets.py`)
-chosen for being broadly useful and byte-cap-friendly. Tables over 50 GB are
-still cataloged (so the model knows they exist) but flagged `large_table`,
-nudging the planner toward a template over ad-hoc SQL for them.
-
-## 7. Reasoning trace and tracing design
+## 6. Reasoning trace and tracing design
 
 The frontend never shows a bare spinner. Every stage streams its own
 `.started`/`.done` (and, for fetch/check, `.progress`/`.backtrack`) events
@@ -247,109 +207,7 @@ reason, the literal SQL and bound parameters for every query actually
 executed, and a token/cost breakdown per model call. This is what survives
 after the live trace panel scrolls out of view.
 
-### 7.1–7.3: three real bugs found by running this pipeline live
-
-Documentation of intent is cheap; these were found by actually asking
-Atlas questions and reading what came back wrong, then fixed at the root:
-
-**7.1 — Discovery's ranking never reached the planner (Q2).** Asked to
-compare life expectancy in Japan vs. the US, discovery correctly ranked
-`world_bank_health_population.country_summary` highest — but
-`_describe_candidate_for_planning()` stripped the `score` field before the
-planner ever saw it, so nothing signaled that discovery had already done
-this work. The model picked a COVID-data table that merely *sounded*
-on-topic instead. Fixed by forwarding `score` into the prompt and telling
-it candidates arrive pre-ranked, best first, requiring a specific concrete
-reason (a missing needed column, missing required params) to override
-that ranking rather than a title-level hunch.
-
-**7.2 — Backtrack reused a stale, single-candidate SQL plan (Q4).**
-`classify_and_plan` was called exactly once, up front, against the
-originally-chosen candidate — but that one `plan` object (including its
-one drafted `sql` string, valid only for that candidate's real schema) was
-then reused verbatim on every backtrack attempt against a *different*
-candidate. Asked about India's GDP per capita, the backtrack attempt
-failed with "Planner marked needs_sql but produced no SQL" — Gemini's
-answer for the first candidate's columns, reused against a table it was
-never drafted for. Fixed by redrafting a fresh, single-candidate plan on
-every attempt after the first, with its own `plan.started`/`plan.done`
-trace pair (§7's backtrack reasoning above is this fix's direct
-side-benefit).
-
-**7.3 — Literal-value SQL against real-world text columns.** Ad-hoc SQL
-using exact equality (`place_name = 'Austin, Texas'`) routinely missed real
-data stored under different phrasing. Fixed with an explicit prompting rule
-to prefer case-insensitive `LIKE` matching on free-text columns, and a
-coded/enum column over a free-text one whenever the schema exposes both.
-This measurably improved routing quality (California's unemployment rate
-now resolves correctly on the first attempt), though it is not a universal
-fix: some tables' only identifying column is a coded ID with no text name
-at all (Census `place_*` tables' `geo_id` is a bare FIPS code), which no
-amount of LIKE-matching can resolve — a data-model gap, not a prompting
-one, documented honestly in `test_results.md` rather than papered over.
-
-## 8. Access control and identity
-
-Firebase Auth (Google sign-in) end to end — no separate session or JWT
-scheme. Every request to `/ask` and every `/admin/*` call carries the
-Firebase ID token as `Authorization: Bearer <token>`, verified server-side
-by the Firebase Admin SDK on every call (`main.py`'s `_verify_token`).
-
-New sign-ins default to `status: "pending"` in a `users/{uid}` Firestore
-doc and get a 403 until an admin approves them via the `/admin` console —
-except two allowlists, both env-var-driven and empty by default so a fresh
-deploy behaves exactly as before either was added:
-
-- `ATLAS_ADMIN_EMAILS` — full admin access (approve/reject other users,
-  view usage).
-- `ATLAS_PREAPPROVED_EMAILS` — skips the approval queue entirely, landing
-  as `status: "approved"` on first sign-in, but otherwise an ordinary user
-  (shows up as "approved" in the console, not as an admin). Also flips an
-  *existing* pending doc to approved on that user's next request, covering
-  an email added to the list after that person already signed in once.
-
-An admin who wants to know about a new pending sign-up without polling the
-console gets one: `infra/functions/on_user_created` is a Firestore-triggered
-2nd-gen Cloud Function, deployed independently of the orchestrator, that
-emails `ATLAS_ADMIN_EMAILS` when a `users/{uid}` doc lands as `pending`. It
-no-ops safely (logs and returns) if its SMTP transport isn't configured yet,
-rather than ever failing the write it's reacting to or retrying
-indefinitely — a missing secret degrades to "no notification," never to a
-broken sign-up flow.
-
-## 9. Frontend behavior worth calling out
-
-- **SSE by hand.** The backend's `/ask` stream needs the caller's Firebase
-  ID token, which the native `EventSource` API can't attach — `lib/api.ts`
-  reads the stream manually instead.
-- **A stream that ends without a terminal event still resolves cleanly.**
-  If the connection drops mid-stream (proxy timeout, server crash) with no
-  `answer` or `error` event ever seen, `AskBar.tsx` still surfaces "The
-  connection ended before Atlas finished answering" and clears the busy
-  state — found while chasing a "stuck on Asking…" report that turned out
-  to have two independent causes (a real backend bug, and this gap, which
-  would have produced the identical symptom on its own).
-- **The question box clears itself on submit**, not just on response.
-  Before this, `AskBar`'s input value was only ever set by typing — nothing
-  reset it after a question was sent, so leftover text sat in the box and a
-  follow-up question typed without clearing it first landed at whatever
-  cursor position a click happened to produce, silently concatenating two
-  questions into one garbled submission (reproduced live while testing the
-  Q2/Q4 fixes above).
-- **Visualization components validate shape, not just JSON syntax.** The
-  synthesis model's output is schema-constrained but only to field names
-  and types — nothing stops a "line" visualization from omitting a usable
-  `series` array. Every `*Viz` component in `AnswerCanvas.tsx` re-validates
-  its expected shape after parsing and falls back to an empty state rather
-  than crashing on `.length` of `undefined` — the exact failure mode this
-  defensive parsing was added after hitting live.
-- **Chart label sizing is data-driven, not fixed.** A bar chart's rotated
-  first label can swing past the SVG's left edge; the fix sizes the
-  left-side padding off that specific label's character count rather than
-  a constant, because a flat pad tuned for one test case clipped a longer
-  real one on the very next query.
-
-## 10. Deployment topology
+## 7. Deployment topology
 
 - **Frontend** — Firebase App Hosting, auto-deploys on every `git push` to
   `main` that touches `frontend/**` (connected via the Firebase console to
@@ -363,13 +221,7 @@ broken sign-up flow.
 - **Admin notification** — Cloud Functions 2nd gen, deployed independently
   via `firebase deploy --only functions`.
 
-Exact, copy-pasteable commands for every one of these live in
-`infra/README.md`, kept as an ordered, idempotent list rather than a
-Terraform state file — the project is small enough that an honest command
-log is more trustworthy than infrastructure-as-code that could silently
-drift from what was actually run.
-
-## 11. Known gaps
+## 8. Known gaps
 
 Documented rather than hidden, since an honest account of what isn't done
 is part of this write-up's job:
@@ -389,11 +241,8 @@ is part of this write-up's job:
   set up; manual `gcloud` deploys are the equivalent today.
 - Map visualizations fall back to a table — no mapping library is wired in.
 
-## 12. References
+## 9. References
 
 - **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** spec, [repository](https://github.com/ards-project/ard-spec).
 - **[Open Knowledge Format (OKF)](https://okf.md/spec/)** spec, [reference tooling](https://github.com/GoogleCloudPlatform/knowledge-catalog), [v0.2 trust-signals announcement](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
-- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** (TechSoup, Apache-2.0) — the pipeline this project forks; see `THIRD_PARTY_NOTICES.md`.
-- `README.md` — repo layout and current build/deploy status.
-- `infra/README.md` — the exact, ordered command log for every piece of infrastructure this project runs on.
-- `test_results.md` — the full live evaluation history (10 original questions, plus the Q2/Q3/Q4/Q6/Q7 backend fix pass) this document's claims are grounded in.
+- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** (TechSoup, Apache-2.0) — the pipeline this project forks.

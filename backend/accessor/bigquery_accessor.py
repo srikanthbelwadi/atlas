@@ -9,8 +9,8 @@ goes through the same two-step path:
      `total_bytes_processed`, checked against the caller-supplied byte cap
   2. the real run, with `maximum_bytes_billed` set to that same cap as a
      hard server-side backstop (BigQuery aborts the job itself if the
-     planner was wrong) and a wall-clock timeout matching the plan's 60s
-     query budget
+     planner was wrong) and a wall-clock timeout matching the plan's
+     ~10-minute (600s) query budget
 
 Never runs a query without a preceding dry run. Never trusts a byte estimate
 without also setting `maximum_bytes_billed` on the real job — the dry run and
@@ -48,7 +48,7 @@ def run(
     sql: str,
     params: list[bigquery.ScalarQueryParameter] | None = None,
     byte_cap: int = 0,
-    timeout_seconds: int = 45,
+    timeout_seconds: int = 570,
 ) -> list[dict]:
     """Dry-runs `sql`, checks against `byte_cap`, then executes for real with
     `maximum_bytes_billed` set to the same cap and a hard wall-clock timeout.
@@ -76,7 +76,7 @@ def run(
     return rows, bytes_billed
 
 
-def run_attested_computation(doc_id: str, param_values: dict, byte_cap: int, timeout_seconds: int = 45):
+def run_attested_computation(doc_id: str, param_values: dict, byte_cap: int, timeout_seconds: int = 570):
     """Loads an OKF AttestedComputation doc by id, binds `param_values` into
     its declared `computation.runtime.parameters`, and runs it through the
     same guarded path as ad-hoc SQL. This is the trusted, human-reviewed

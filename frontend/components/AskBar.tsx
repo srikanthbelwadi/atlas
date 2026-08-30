@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { askStream, ApiError } from "@/lib/api";
 import { Answer, TraceEvent } from "@/lib/types";
@@ -47,24 +47,42 @@ interface Props {
 
 export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Props) {
   const [question, setQuestion] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { getIdToken } = useAuth();
+
+  // Ticks once a second while a question is in flight, purely so the button
+  // and the "still working" hint below can tell the user how long this
+  // particular question has been running — queries are now allowed up to
+  // ~10 minutes (see backend/orchestrator/guardrails.py), so a bare "Asking…"
+  // with no sense of elapsed time would read as hung well before it actually
+  // times out. Cleared on unmount and whenever `busy` flips back to false.
+  useEffect(() => {
+    if (busy) {
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [busy]);
 
   const submit = async (q: string) => {
     if (!q.trim() || busy) return;
     onStart();
-    // Clear the input immediately on submit — before this, `question` was
-    // only ever updated by onChange and never reset, so leftover text sat
-    // in the box after a question finished. A user who then clicked back
-    // into the box and typed a follow-up question got their new text
-    // inserted at whatever the click's cursor position landed on, silently
-    // producing a garbled concatenation of the old and new questions that
-    // got submitted as one string on the next Enter/Ask — found live while
-    // testing (an "India's GDP" question came back empty because it had
-    // actually been submitted glued onto a leftover Japan/US life
-    // expectancy question). Clearing here, right when the text is handed
-    // off to the request, is the fix: by the time the user can click back
-    // into the box, it's already empty.
-    setQuestion("");
+    // Keep the submitted question visible in the box for the whole request,
+    // and after it finishes — even on failure — rather than clearing it.
+    // This also covers the suggestion-chip path: clicking a chip calls
+    // submit(ex) directly without ever touching onChange, so without this
+    // the box would stay blank for the whole run even though a real
+    // question is in flight. `onFocus` below (select-all) is what protects
+    // against the old concatenation bug now that the box is never cleared:
+    // clicking back into it selects the existing text, so typing replaces
+    // it instead of inserting into the middle of it.
+    setQuestion(q);
     // Tracks whether the stream ever sent a recognized terminal event, so we
     // can tell a clean finish apart from the stream just ending. Without
     // this, a response that closes early — a proxy timeout, a server crash
@@ -111,6 +129,7 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
           placeholder="Ask a question a public dataset can answer…"
           disabled={busy}
           style={{
@@ -136,9 +155,15 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
             cursor: busy ? "default" : "pointer",
           }}
         >
-          {busy ? "Asking…" : "Ask"}
+          {busy ? `Asking… ${elapsed}s` : "Ask"}
         </button>
       </form>
+      {busy && elapsed >= 15 && (
+        <div style={{ marginTop: 10, fontSize: "0.8rem", color: "var(--ink-dim)" }}>
+          Still working — some questions take a few minutes, especially when a first attempt has
+          to backtrack to another source. Follow along in the trace below.
+        </div>
+      )}
       {!busy && (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
           {EXAMPLES.map((ex) => (

@@ -63,7 +63,7 @@ cd atlas
 gcloud builds submit --config=infra/cloudbuild-orchestrator.yaml .
 gcloud run deploy atlas-orchestrator \
   --image=us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-orchestrator:latest \
-  --region=us-central1 --allow-unauthenticated \
+  --region=us-central1 --allow-unauthenticated --timeout=600 \
   --set-env-vars=GOOGLE_CLOUD_PROJECT=atlas-ard-okf,VERTEX_LOCATION=us-central1
 
 # 9. Build the crawler image, create its Cloud Run Job, and run it once to

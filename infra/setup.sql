@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS `atlas-ard-okf.ard_catalog.embeddings` (
 -- approximate-nearest-neighbor lookup. Skippable while the catalog is small
 -- (a few thousand rows from the curated target list in backend/crawler/targets.py
 -- brute-forces in well under a second) — add it once the crawl list grows
--- enough that discovery latency starts eating into the 60s query budget.
+-- enough that discovery latency starts eating meaningfully into the query budget.
 -- CREATE VECTOR INDEX IF NOT EXISTS embeddings_ivf
 --   ON `atlas-ard-okf.ard_catalog.embeddings`(embedding)
 --   OPTIONS (index_type = 'IVF', distance_type = 'COSINE');

@@ -26,7 +26,7 @@ from google.cloud import firestore
 
 TEMPLATE_BYTE_CAP = int(os.environ.get("ATLAS_TEMPLATE_BYTE_CAP", 20 * 1024**3))   # 20 GB
 ADHOC_BYTE_CAP = int(os.environ.get("ATLAS_ADHOC_BYTE_CAP", 10 * 1024**3))          # 10 GB
-QUERY_TIMEOUT_SECONDS = int(os.environ.get("ATLAS_QUERY_TIMEOUT_SECONDS", 45))      # leaves headroom inside the 60s budget
+QUERY_TIMEOUT_SECONDS = int(os.environ.get("ATLAS_QUERY_TIMEOUT_SECONDS", 570))     # leaves ~30s headroom inside the 10-minute (600s) Cloud Run request budget
 
 MONTHLY_COST_CEILING_USD = float(os.environ.get("ATLAS_MONTHLY_COST_CEILING_USD", 100.0))
 BQ_PRICE_PER_TIB_USD = 6.25

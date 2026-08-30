@@ -5,7 +5,7 @@ This is Resource Raiser's own five-stage shape, kept deliberately, with two
 differences: `fetch` is guarded (byte cap + timeout, see guardrails.py) and
 every stage emits SSE trace events as it goes, so the frontend's live query
 trace (plan §03) can render the query's progress in real time rather than
-showing a spinner for up to 60 seconds.
+showing a spinner for up to the full ~10-minute query budget.
 
 `run()` is an async generator. Each yielded dict is one SSE event:
     {"event": "<stage>.<phase>", "data": {...json-serializable...}}
