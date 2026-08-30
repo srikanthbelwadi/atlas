@@ -52,15 +52,27 @@ export async function* askStream(question: string, token: string, signal?: Abort
   let buffer = "";
   let seq = 0;
 
+  // sse-starlette (the library backing /ask) encodes every field with "\r\n",
+  // so a frame boundary is "\r\n\r\n" — never a bare "\n\n". This parser used
+  // to search only for "\n\n", which never matched: every event, including
+  // the terminal "answer"/"error", sat unparsed in `buffer` for the whole
+  // request and was silently dropped when the stream closed. That's the real
+  // root cause behind "stuck at Asking..." — no event ever reached onEvent,
+  // regardless of what the backend actually did. Matching either separator
+  // (and splitting frame lines on either "\r\n" or "\n") makes this robust to
+  // both sse-starlette's own wire format and a bare-"\n" SSE producer.
+  const FRAME_SEP = /\r\n\r\n|\n\n/;
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    let sepIndex: number;
-    while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+    let match: RegExpMatchArray | null;
+    while ((match = buffer.match(FRAME_SEP))) {
+      const sepIndex = match.index as number;
       const rawEvent = buffer.slice(0, sepIndex);
-      buffer = buffer.slice(sepIndex + 2);
+      buffer = buffer.slice(sepIndex + match[0].length);
       const parsed = parseSseFrame(rawEvent);
       if (parsed) {
         yield { ...parsed, id: `${seq++}` };
@@ -73,7 +85,7 @@ export async function* askStream(question: string, token: string, signal?: Abort
 function parseSseFrame(frame: string): { event: TraceEventName; data: Record<string, unknown> } | null {
   let eventName: string | null = null;
   const dataLines: string[] = [];
-  for (const line of frame.split("\n")) {
+  for (const line of frame.split(/\r\n|\n/)) {
     if (line.startsWith("event:")) eventName = line.slice(6).trim();
     else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
   }
