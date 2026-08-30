@@ -33,19 +33,19 @@ const HOW_IT_WORKS = [
 const FEATURES = [
   {
     title: "Described once, not wired by hand",
-    body: "Adding a dataset means writing an ARD/OKF description, not a new integration. The discovery step searches those descriptions by meaning, so the catalog grows without new glue code per source.",
+    body: "Adding a dataset means writing an ARD/OKF description, not a new integration — the discovery step searches those descriptions by meaning, so the catalog grows without per-source glue code.",
   },
   {
-    title: "Trust you can see",
-    body: "Every citation carries the OKF trust tier behind it, so you know whether a figure is a direct schema read or a human-reviewed computation — not just a number with a link.",
+    title: "Every figure, never invented",
+    body: "The model never answers from what it already knows. Every number comes from a real, guarded BigQuery query and is cited back to its exact source and OKF trust tier — unverified, machine-confirmed, or human-reviewed.",
   },
   {
-    title: "Budget-guarded by design",
-    body: "A hard per-user monthly ceiling and a per-query byte cap are enforced before a query runs, not discovered afterward on a bill.",
+    title: "Refuses rather than guesses",
+    body: "When no source can answer a question well enough to cite, Atlas says so plainly instead of approximating — a clear \"I couldn't find a good source for this\" beats a confident-sounding guess.",
   },
   {
     title: "Reasoning you can watch",
-    body: "A live trace shows which sources were considered and why one was chosen over another, including what happened on a retry — not just a spinner.",
+    body: "A live trace shows every candidate source considered and why one was ranked above the rest — not just a spinner — including what changed when a first attempt had to backtrack.",
   },
 ];
 
@@ -76,7 +76,7 @@ export default function SignInGate({ children }: { children: ReactNode }) {
           </h2>
           <p style={{ color: "var(--ink-dim)", maxWidth: 520, margin: "0 auto 30px", fontSize: "1.02rem" }}>
             Atlas turns a plain-English question into a cited answer — discovered, planned, and verified against
-            public BigQuery datasets in real time, not a canned dashboard behind it.
+            public BigQuery datasets in real time.
           </p>
           <button onClick={() => signIn()} className="cta-button">
             Sign in with Google
@@ -136,6 +136,10 @@ export default function SignInGate({ children }: { children: ReactNode }) {
             <Link href="/implementation" className="nav-link">
               Read the full engineering writeup
             </Link>
+            {" · "}
+            <a href="https://tsnlw.centralindia.cloudapp.azure.com/life-of-a-query" target="_blank" rel="noopener noreferrer" className="nav-link">
+              The Life of a Query
+            </a>
             {" · "}
             <a href="https://agenticresourcediscovery.org/spec/" target="_blank" rel="noopener noreferrer" className="nav-link">
               ARD spec
