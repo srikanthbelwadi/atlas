@@ -13,11 +13,24 @@ const STAGES: { key: string; label: string }[] = [
 
 type Status = "pending" | "active" | "done" | "blocked";
 
-function statusFor(stage: string, events: TraceEvent[]): Status {
+// `finished` is true once the stream's terminal event ("answer" or "error")
+// has arrived. Without it, a stage that was interrupted mid-attempt — e.g.
+// "fetch" backtracked away from a bad candidate, or "check" never got its
+// own .done because the whole run then failed on the *next* candidate —
+// stays reported as "active" forever, since it only ever saw a non-".done"
+// event for that stage. That rendered as a permanently spinning "running…"
+// next to a request that had, in fact, already finished (successfully or
+// not) — indistinguishable from the app actually being stuck, which is
+// exactly the failure mode this session has spent most of its time hunting
+// down elsewhere in the stack. Once the run is finished, any stage still
+// sitting in "active" gets folded into "done" instead — it isn't literally
+// running anymore, and the note text (e.g. "Backtracking — trying another
+// source") still explains what actually happened there.
+function statusFor(stage: string, events: TraceEvent[], finished: boolean): Status {
   const forStage = events.filter((e) => e.event.startsWith(`${stage}.`));
   if (forStage.some((e) => e.event.endsWith(".blocked"))) return "blocked";
   if (forStage.some((e) => e.event.endsWith(".done"))) return "done";
-  if (forStage.length > 0) return "active";
+  if (forStage.length > 0) return finished ? "done" : "active";
   return "pending";
 }
 
@@ -70,6 +83,7 @@ const DOT_COLOR: Record<Status, string> = {
 
 export default function TracePanel({ events }: { events: TraceEvent[] }) {
   if (events.length === 0) return null;
+  const finished = events.some((e) => e.event === "answer" || e.event === "error");
 
   return (
     <div
@@ -85,7 +99,7 @@ export default function TracePanel({ events }: { events: TraceEvent[] }) {
       </div>
       <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 14 }}>
         {STAGES.map(({ key, label }) => {
-          const status = statusFor(key, events);
+          const status = statusFor(key, events, finished);
           const note = noteFor(key, events);
           if (status === "pending") return null;
           return (

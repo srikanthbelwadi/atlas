@@ -98,7 +98,21 @@ def _describe_candidate_for_planning(c: dict) -> dict:
     parameter" ValueError — this was a real bug found by actually running a
     query end to end, not just reading the code: the original prompt asked
     for {shape, source_id, needs_sql} only and never mentioned parameters at
-    all, so `plan.get("params", {})` was always empty."""
+    all, so `plan.get("params", {})` was always empty.
+
+    For a plain BigQuery table candidate (needs_sql path, no
+    required_params), the same problem exists one level down: the planner
+    drafts raw SQL against the real table, but discovery.py's candidate dict
+    already dropped everything except title/trust/type before this function
+    even saw it. `c["description"]` — built deterministically from
+    INFORMATION_SCHEMA.COLUMNS by the crawler (backend/crawler/main.py's
+    `_describe_table`), never model-generated — is the one place the real
+    column names survive. Without forwarding it here, the planner has to
+    guess column names from the table's title alone, and it guesses
+    plausible-sounding ones that don't exist: confirmed live via two
+    different BigQuery 400s in the same session — "Unrecognized name:
+    mean_aqi" against epa_historical_air_quality.co_daily_summary, and
+    "Unrecognized name: place_name" against census_bureau_acs.cbsa_2010_5yr."""
     out = {"source_id": c["source_id"], "title": c["title"], "type": c.get("type"), "trust": c["trust"]}
     if c.get("type") == "AttestedComputation":
         doc = okf_loader.load_by_id(c["source_id"])
@@ -107,6 +121,8 @@ def _describe_candidate_for_planning(c: dict) -> dict:
                 {"name": p["name"], "type": p.get("type", "STRING"), "description": p.get("description", "")}
                 for p in doc.computation.get("runtime", {}).get("parameters", [])
             ]
+    elif c.get("kind") == "bigquery":
+        out["schema"] = c.get("description", "")
     return out
 
 
@@ -133,7 +149,16 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
         "If you draft ad-hoc SQL for a plain BigQuery table candidate "
         "(needs_sql: true, no required_params), inline all literal values "
         "directly in the SQL text — do not use query parameters there — "
-        "and put the SQL under \"sql\".\n\n"
+        "and put the SQL under \"sql\". That candidate's `schema` field (if "
+        "present) is the table's REAL column list, taken directly from "
+        "BigQuery's own INFORMATION_SCHEMA — use ONLY column names that "
+        "appear there. Never invent or guess a column name from the table's "
+        "title/description, even one that sounds plausible: BigQuery will "
+        "reject the query outright, and a name that merely sounds right for "
+        "the domain (e.g. assuming an air-quality table exposes `mean_aqi`, "
+        "or a place table exposes `place_name`) is exactly the mistake this "
+        "warns against — both have failed against real tables before. If a "
+        "candidate has no `schema` field, do not choose it for ad-hoc SQL.\n\n"
         f"Question: {question!r}\nCandidates: {json.dumps(described)}\n"
         "Respond as JSON: {\"shape\": str, \"source_id\": str, "
         "\"needs_sql\": bool, \"sql\": str or null, \"params\": object}. "

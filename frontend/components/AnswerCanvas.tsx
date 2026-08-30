@@ -126,11 +126,21 @@ function LineViz({ data }: { data: string }) {
       {series.map((s, si) => (
         <polyline key={s.name} points={points(s.values)} fill="none" stroke={colors[si % colors.length]} strokeWidth={2.5} />
       ))}
-      {labels.map((l, i) => (
-        <text key={l} x={(i / Math.max(labels.length - 1, 1)) * width} y={height + 18} textAnchor="middle" fontSize="11" fill="var(--ink-dim)">
-          {l}
-        </text>
-      ))}
+      {labels.map((l, i) => {
+        // The first/last label sits exactly on the viewBox edge (x=0 or
+        // x=width). textAnchor="middle" there centers the text ON that
+        // edge, so half of it — e.g. the leading "20" of "2020" — renders
+        // outside the viewBox and gets clipped. Anchoring the end labels
+        // to "start"/"end" instead keeps the tick position accurate while
+        // letting the full label render inward, on-canvas.
+        const x = (i / Math.max(labels.length - 1, 1)) * width;
+        const anchor = i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle";
+        return (
+          <text key={l} x={x} y={height + 18} textAnchor={anchor} fontSize="11" fill="var(--ink-dim)">
+            {l}
+          </text>
+        );
+      })}
       {series.length > 1 && (
         <g>
           {series.map((s, si) => (
