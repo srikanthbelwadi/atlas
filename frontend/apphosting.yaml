@@ -8,8 +8,9 @@
 # authorize anything by itself. Real access control is server-side, in
 # Firestore security rules and the orchestrator's own approved-user check.
 #
-# NEXT_PUBLIC_ATLAS_API_BASE_URL gets updated once the orchestrator's actual
-# Cloud Run URL is known (it's a placeholder until that first deploy).
+# NEXT_PUBLIC_ATLAS_API_BASE_URL is the orchestrator's real Cloud Run URL,
+# confirmed live (its /healthz and unmatched-route paths both respond
+# correctly) after the first `gcloud run deploy` from infra/README.md.
 
 runConfig:
   minInstances: 0
@@ -20,7 +21,7 @@ runConfig:
 
 env:
   - variable: NEXT_PUBLIC_ATLAS_API_BASE_URL
-    value: https://atlas-orchestrator-REPLACE.run.app
+    value: https://atlas-orchestrator-653988957394.us-central1.run.app
     availability:
       - BUILD
       - RUNTIME
