@@ -55,7 +55,7 @@ def ensure_catalog_table() -> None:
     ddl = f"""
         CREATE TABLE IF NOT EXISTS `{PROJECT_ID}.{ARD_CATALOG_DATASET}.embeddings` (
             doc_id STRING NOT NULL,
-            embedding ARRAY<FLOAT64> NOT NULL,
+            embedding ARRAY<FLOAT64>,
             metadata JSON NOT NULL,
             updated_at TIMESTAMP NOT NULL
         )

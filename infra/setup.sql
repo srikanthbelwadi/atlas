@@ -8,9 +8,12 @@
 CREATE SCHEMA IF NOT EXISTS `atlas-ard-okf.ard_catalog`
   OPTIONS (location = 'US');
 
+-- embedding has no NOT NULL: BigQuery rejects NOT NULL on ARRAY (REPEATED)
+-- columns outright ("NULL arrays are always stored as an empty array") —
+-- learned the hard way from the crawler's first failed run.
 CREATE TABLE IF NOT EXISTS `atlas-ard-okf.ard_catalog.embeddings` (
   doc_id STRING NOT NULL OPTIONS (description = 'e.g. bq.bigquery-public-data.covid19_open_data.covid19_open_data'),
-  embedding ARRAY<FLOAT64> NOT NULL OPTIONS (description = 'text-embedding-005 output, 768-dim'),
+  embedding ARRAY<FLOAT64> OPTIONS (description = 'text-embedding-005 output, 768-dim'),
   metadata JSON NOT NULL OPTIONS (description = 'title/description/trust/type/source, see backend/crawler/main.py'),
   updated_at TIMESTAMP NOT NULL
 );
