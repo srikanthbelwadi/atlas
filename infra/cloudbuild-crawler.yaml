@@ -1,0 +1,22 @@
+# Builds+pushes the crawler image. Run from the repo root:
+#   gcloud builds submit --config=infra/cloudbuild-crawler.yaml .
+# Then create/update its Cloud Run Job:
+#   gcloud run jobs deploy atlas-crawler \
+#     --image=us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-crawler:latest \
+#     --region=us-central1 --set-env-vars=GOOGLE_CLOUD_PROJECT=atlas-ard-okf \
+#     --max-retries=1 --task-timeout=15m
+# And run it once by hand to populate ard_catalog.embeddings before the
+# first query is ever asked:
+#   gcloud run jobs execute atlas-crawler --region=us-central1
+
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "backend/crawler/Dockerfile"
+      - "-t"
+      - "us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-crawler:latest"
+      - "."
+images:
+  - "us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-crawler:latest"

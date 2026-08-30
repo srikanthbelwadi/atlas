@@ -20,11 +20,15 @@ See the full implementation plan for architecture, the ARD/OKF wrapper design ov
 
 - [x] Google Cloud project created (`atlas-ard-okf`), billing linked
 - [x] Required APIs enabled (BigQuery, Vertex AI, Cloud Run, Cloud Build, Artifact Registry, Firebase, Firestore, Cloud Functions, Secret Manager, Cloud Scheduler, Identity Toolkit)
-- [ ] Firebase project linked, Firestore database + `ard_catalog` BigQuery dataset + `atlas-images` Artifact Registry repo created
+- [x] Firebase project linked, Firestore database + `ard_catalog` BigQuery dataset + `atlas-images` Artifact Registry repo created — all confirmed live in-console
+- [x] Firebase Auth: Google sign-in enabled; web app registered, its config baked into `frontend/apphosting.yaml`
 - [x] Backend orchestrator (Phase 1): discover → plan → fetch → check → synthesize pipeline with live SSE trace, guarded BigQuery executor (dry-run byte cap + hard `maximum_bytes_billed` + wall-clock timeout), Firestore-backed per-user monthly budget ceiling, Firebase-Auth-gated `/ask` + admin approval console API
 - [x] `backend/crawler/` — curated-target BigQuery enumeration into `ard_catalog.embeddings` (Cloud Run Job, not yet deployed)
 - [x] `frontend/` — Next.js app: Google sign-in gate, ask bar, live query trace panel, adaptive answer canvas (table/bar/line/kpi cards/infographic), admin approval console — type-checks and builds clean, not yet deployed
-- [x] GitHub Actions workflows written (`deploy-backend.yml`, `deploy-frontend.yml` CI, `catalog-refresh.yml`) — blocked on Workload Identity Federation (see `infra/README.md`)
+- [x] GitHub Actions workflows written (`deploy-backend.yml`, `deploy-frontend.yml` CI, `catalog-refresh.yml`) — blocked on Workload Identity Federation (see `infra/README.md`); manual Cloud Build equivalents (`infra/cloudbuild-*.yaml`) work today
+- [ ] Orchestrator, crawler, and frontend actually deployed — `infra/README.md` has the exact remaining commands, including a real blocker found and fixed: Firebase App Hosting's "Connect GitHub" step needs the Developer Connect API enabled first, or it hangs silently
+
+**No Vercel anywhere in this stack.** The frontend is a standard Next.js app, which is what Vercel is best known for hosting, but it deploys to **Firebase App Hosting** (which runs it on Cloud Run under the hood) — nothing in `frontend/` references Vercel, and `apphosting.yaml` is Firebase's own config format, not Vercel's.
 
 ### Backend orchestrator
 

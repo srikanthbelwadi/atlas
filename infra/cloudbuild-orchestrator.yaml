@@ -1,0 +1,26 @@
+# Builds+pushes the orchestrator image. Run from the repo root:
+#   gcloud builds submit --config=infra/cloudbuild-orchestrator.yaml .
+# Then deploy it:
+#   gcloud run deploy atlas-orchestrator \
+#     --image=us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-orchestrator:latest \
+#     --region=us-central1 --allow-unauthenticated \
+#     --set-env-vars=GOOGLE_CLOUD_PROJECT=atlas-ard-okf,VERTEX_LOCATION=us-central1
+#
+# (--allow-unauthenticated is fine here: real access control is the
+# Firebase-ID-token + approved-user check inside main.py, not Cloud Run IAM.)
+#
+# This is the same build .github/workflows/deploy-backend.yml runs once
+# Workload Identity Federation is set up — kept here so the first deploy
+# doesn't have to wait on that.
+
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "backend/orchestrator/Dockerfile"
+      - "-t"
+      - "us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-orchestrator:latest"
+      - "."
+images:
+  - "us-central1-docker.pkg.dev/atlas-ard-okf/atlas-images/atlas-orchestrator:latest"
