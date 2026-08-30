@@ -161,7 +161,19 @@ def synthesize(question: str, evidence: dict) -> tuple[dict, dict]:
         "evidence (a single figure -> kpi_cards, a ranking/comparison -> "
         "bar, a time series -> line, a list of records -> table, a "
         "geographic breakdown -> map; reserve infographic for a finding a "
-        "plain chart would undersell)."
+        "plain chart would undersell).\n\n"
+        "The \"data\" field must be a JSON-encoded string using EXACTLY "
+        "this shape for the chosen kind — the frontend renderer keys off "
+        "these exact field names and will show nothing if they don't "
+        "match:\n"
+        "  table       -> [{\"<col>\": <value>, ...}, ...]\n"
+        "  bar         -> {\"labels\": [string, ...], \"values\": [number, ...], \"label\": string (optional)}\n"
+        "  line        -> {\"labels\": [string, ...], \"series\": [{\"name\": string, \"values\": [number, ...]}, ...]}\n"
+        "  kpi_cards   -> [{\"label\": string, \"value\": string}, ...]\n"
+        "  infographic -> {\"headline\": string, \"stats\": [{\"label\": string, \"value\": string}, ...], \"note\": string (optional)}\n"
+        "  map         -> {\"points\": [{\"lat\": number, \"lon\": number, \"label\": string}, ...]}\n"
+        "Every array named above (labels, values, series, stats, points) "
+        "must be present, even if empty — never omit it."
     )
     resp = client().models.generate_content(
         model=SYNTHESIS_MODEL,

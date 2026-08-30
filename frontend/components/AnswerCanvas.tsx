@@ -23,9 +23,17 @@ function safeParse<T>(json: string, fallback: T): T {
 }
 
 function TableViz({ data }: { data: string }) {
-  const rows = safeParse<Record<string, unknown>[]>(data, []);
+  // Defensive: the synthesis model's `data` string is only *typed* as
+  // matching each kind's expected shape — nothing stops it from actually
+  // returning a different shape (an object instead of an array, a missing
+  // field). safeParse only guards against invalid JSON, not a valid-JSON
+  // wrong shape, so every field read below re-validates before use. This is
+  // exactly the class of bug that crashed this panel in testing: valid JSON,
+  // unexpected shape, `.length` read on `undefined`.
+  const parsed = safeParse<unknown>(data, []);
+  const rows = Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [];
   if (!rows.length) return <Empty />;
-  const columns = Object.keys(rows[0]);
+  const columns = Object.keys(rows[0] ?? {});
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
@@ -55,9 +63,10 @@ function TableViz({ data }: { data: string }) {
 }
 
 function BarViz({ data }: { data: string }) {
-  const parsed = safeParse<{ labels: string[]; values: number[]; label?: string }>(data, { labels: [], values: [] });
-  const { labels, values } = parsed;
-  if (!labels.length) return <Empty />;
+  const parsed = safeParse<Partial<{ labels: string[]; values: number[]; label?: string }>>(data, {});
+  const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
+  const values = Array.isArray(parsed.values) ? parsed.values : [];
+  if (!labels.length || !values.length) return <Empty />;
   const max = Math.max(...values, 1);
   const width = 640;
   const height = 220;
@@ -84,8 +93,15 @@ function BarViz({ data }: { data: string }) {
 }
 
 function LineViz({ data }: { data: string }) {
-  const parsed = safeParse<{ labels: string[]; series: { name: string; values: number[] }[] }>(data, { labels: [], series: [] });
-  const { labels, series } = parsed;
+  // This exact shape mismatch — synthesis returning valid JSON for a "line"
+  // visualization without a usable `series` array — was the crash seen live:
+  // `!series.length` threw "Cannot read properties of undefined" because
+  // `series` didn't validate as an array before `.length` was read.
+  const parsed = safeParse<Partial<{ labels: string[]; series: { name: string; values: number[] }[] }>>(data, {});
+  const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
+  const series = Array.isArray(parsed.series)
+    ? parsed.series.filter((s) => s && Array.isArray(s.values))
+    : [];
   if (!labels.length || !series.length) return <Empty />;
   const width = 640;
   const height = 220;
@@ -129,7 +145,8 @@ function LineViz({ data }: { data: string }) {
 }
 
 function KpiCardsViz({ data }: { data: string }) {
-  const cards = safeParse<{ label: string; value: string }[]>(data, []);
+  const parsed = safeParse<unknown>(data, []);
+  const cards = Array.isArray(parsed) ? (parsed as { label: string; value: string }[]) : [];
   if (!cards.length) return <Empty />;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
@@ -144,26 +161,29 @@ function KpiCardsViz({ data }: { data: string }) {
 }
 
 function InfographicViz({ data }: { data: string }) {
-  const parsed = safeParse<{ headline: string; stats: { label: string; value: string }[]; note?: string }>(data, { headline: "", stats: [] });
-  if (!parsed.headline && !parsed.stats.length) return <Empty />;
+  const parsed = safeParse<Partial<{ headline: string; stats: { label: string; value: string }[]; note?: string }>>(data, {});
+  const headline = typeof parsed.headline === "string" ? parsed.headline : "";
+  const stats = Array.isArray(parsed.stats) ? parsed.stats : [];
+  if (!headline && !stats.length) return <Empty />;
   return (
     <div style={{ background: "var(--accent-soft)", borderRadius: 12, padding: "22px 24px" }}>
-      {parsed.headline && <div style={{ fontFamily: "var(--font-serif)", fontSize: "1.3rem", marginBottom: 14 }}>{parsed.headline}</div>}
-      <KpiCardsViz data={JSON.stringify(parsed.stats)} />
+      {headline && <div style={{ fontFamily: "var(--font-serif)", fontSize: "1.3rem", marginBottom: 14 }}>{headline}</div>}
+      <KpiCardsViz data={JSON.stringify(stats)} />
       {parsed.note && <div style={{ fontSize: "0.8rem", color: "var(--ink-dim)", marginTop: 12 }}>{parsed.note}</div>}
     </div>
   );
 }
 
 function MapViz({ data }: { data: string }) {
-  const parsed = safeParse<{ points: { lat: number; lon: number; label: string }[] }>(data, { points: [] });
-  if (!parsed.points.length) return <Empty />;
+  const parsed = safeParse<Partial<{ points: { lat: number; lon: number; label: string }[] }>>(data, {});
+  const points = Array.isArray(parsed.points) ? parsed.points : [];
+  if (!points.length) return <Empty />;
   return (
     <div>
       <div style={{ fontSize: "0.8rem", color: "var(--ink-dim)", marginBottom: 8 }}>
         Map rendering isn&rsquo;t wired up yet — showing the underlying points:
       </div>
-      <TableViz data={JSON.stringify(parsed.points)} />
+      <TableViz data={JSON.stringify(points)} />
     </div>
   );
 }
@@ -188,6 +208,7 @@ export default function AnswerCanvas({ answer }: { answer: Answer }) {
   // the response, a future schema change). Fall back to something renderable.
   const citations = answer.citations ?? [];
   const visualization = answer.visualization ?? { kind: "table", data: "[]" };
+  const vizData = visualization.data ?? "[]";
   const Viz = VIZ_COMPONENTS[visualization.kind] || TableViz;
 
   return (
@@ -204,7 +225,7 @@ export default function AnswerCanvas({ answer }: { answer: Answer }) {
     >
       <p style={{ fontSize: "1.05rem", margin: 0, lineHeight: 1.65 }}>{answer.narrative}</p>
 
-      <Viz data={visualization.data} />
+      <Viz data={vizData} />
 
       {citations.length > 0 && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -231,7 +252,9 @@ export default function AnswerCanvas({ answer }: { answer: Answer }) {
         </div>
       )}
 
-      <div style={{ fontSize: "0.72rem", color: "var(--ink-dim)" }}>Answered in {answer.elapsed_s}s</div>
+      <div style={{ fontSize: "0.72rem", color: "var(--ink-dim)" }}>
+        {answer.elapsed_s != null ? `Answered in ${answer.elapsed_s}s` : null}
+      </div>
     </div>
   );
 }
