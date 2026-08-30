@@ -68,8 +68,16 @@ def _describe_table(project: str, dataset: str, table_row) -> tuple[str, dict]:
     table_name = table_row.table_name
     full_ref = f"{project}.{dataset}.{table_name}"
 
+    # No `description` column here on purpose: INFORMATION_SCHEMA.COLUMNS has no
+    # such field (that only exists on COLUMN_FIELD_PATHS, a different view, and
+    # only cleanly for top-level fields — nested STRUCT columns get one row per
+    # leaf field there). Selecting it threw "Unrecognized name: description" on
+    # every single table in the crawler's first real run, which the per-table
+    # try/except in crawl_dataset() swallowed silently — the job exited 0 having
+    # catalogued nothing. Keep this query to columns INFORMATION_SCHEMA.COLUMNS
+    # actually has so a schema surprise can't zero out the whole crawl again.
     cols_sql = f"""
-        SELECT column_name, data_type, description
+        SELECT column_name, data_type
         FROM `{project}.{dataset}`.INFORMATION_SCHEMA.COLUMNS
         WHERE table_name = @table_name
         ORDER BY ordinal_position
@@ -78,7 +86,7 @@ def _describe_table(project: str, dataset: str, table_row) -> tuple[str, dict]:
         query_parameters=[bigquery.ScalarQueryParameter("table_name", "STRING", table_name)]
     )
     columns = list(client().query(cols_sql, job_config=job_config).result(timeout=30))
-    column_lines = [f"  - {c.column_name} ({c.data_type})" + (f": {c.description}" if c.description else "") for c in columns]
+    column_lines = [f"  - {c.column_name} ({c.data_type})" for c in columns]
 
     size_gb = (table_row.total_logical_bytes or table_row.total_bytes or 0) / (1024**3) if hasattr(table_row, "total_logical_bytes") else None
     title = f"{dataset}.{table_name}"
