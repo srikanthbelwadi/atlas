@@ -37,6 +37,19 @@ const EXAMPLES = [
   // and a suggestion chip should only ever point at a question Atlas can
   // actually answer well.
   "What is the unemployment rate in California?",
+  // Added after the SEC EDGAR company-facts integration went live
+  // (ac.sec_edgar_company_metric_by_year — see IMPLEMENTATION.md §5), and
+  // only once live-verified end to end, same as every chip above. This one
+  // took two live-test-and-fix rounds first: "Google" isn't Alphabet's
+  // SEC-registered filer name, so the company resolver originally found
+  // nothing for it, and a company-revenue query (tested first against
+  // Apple) also needed a fix for filers who moved off the legacy
+  // `Revenues` XBRL tag post-ASC-606. Both are fixed in
+  // sec_edgar_accessor.py (KNOWN_ALIASES; merging every candidate revenue
+  // tag with reported data). Confirmed live: answers "$307.39B" — matching
+  // Alphabet Inc.'s actual FY2023 10-K revenue — cited as human-reviewed,
+  // no backtracking needed.
+  "What was Google's revenue in 2023?",
 ];
 
 interface Props {
