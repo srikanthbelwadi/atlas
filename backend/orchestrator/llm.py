@@ -135,7 +135,17 @@ def _describe_candidate_for_planning(c: dict) -> dict:
         doc = okf_loader.load_by_id(c["source_id"])
         if doc and doc.computation:
             out["required_params"] = [
-                {"name": p["name"], "type": p.get("type", "STRING"), "description": p.get("description", "")}
+                {
+                    "name": p["name"],
+                    "type": p.get("type", "STRING"),
+                    "description": p.get("description", ""),
+                    # Defaults to True so every existing template (which never
+                    # declared this field) keeps its original strictly-required
+                    # behavior. The SEC EDGAR template is the first to declare
+                    # an optional one (fiscal_year) — see classify_and_plan's
+                    # prompt for how optional params are handled differently.
+                    "required": p.get("required", True),
+                }
                 for p in doc.computation.get("runtime", {}).get("parameters", [])
             ]
     elif c.get("kind") == "bigquery":
@@ -173,16 +183,23 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
             "COVID-data table that had no score attached to weigh against it.\n\n"
         )
         + "If the chosen candidate has a `required_params` list, it is a "
-        "human-reviewed SQL template (an AttestedComputation) — you MUST "
-        "extract a value for every parameter it lists directly from the "
-        "question's own wording (use each parameter's `description` as a "
-        "guide for the expected format, e.g. a full county name or a "
-        "two-letter state code) and return them under \"params\", keyed by "
+        "human-reviewed template (an AttestedComputation — not necessarily "
+        "SQL; some run against a REST API instead) — you MUST extract a "
+        "value for every parameter whose own `required` field is true, "
+        "directly from the question's own wording (use each parameter's "
+        "`description` as a guide for the expected format, e.g. a full "
+        "county name, a two-letter state code, or one of a fixed set of "
+        "curated metric keys) and return them under \"params\", keyed by "
         "parameter name. If the question doesn't actually supply enough "
-        "information for one of that template's required parameters, do "
+        "information for one of that template's REQUIRED parameters, do "
         "NOT choose it — pick a different candidate instead, or set "
         "needs_sql to true and draft ad-hoc SQL against a plain table "
-        "candidate.\n\n"
+        "candidate. A parameter with `required: false` is different: only "
+        "extract and include it under \"params\" when the question actually "
+        "specifies a value for it (e.g. names a specific year) — its "
+        "absence from the question should NOT block you from choosing that "
+        "candidate, and you must never guess or invent a value to fill it "
+        "in. Omit it from \"params\" entirely rather than guessing.\n\n"
         "If you draft ad-hoc SQL for a plain BigQuery table candidate "
         "(needs_sql: true, no required_params), inline all literal values "
         "directly in the SQL text — do not use query parameters there — "

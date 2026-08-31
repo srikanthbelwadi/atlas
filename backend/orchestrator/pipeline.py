@@ -61,7 +61,7 @@ import asyncio
 import time
 
 from . import discovery, guardrails, llm
-from ..accessor import bigquery_accessor, okf_loader
+from ..accessor import bigquery_accessor, okf_loader, sec_edgar_accessor
 
 MAX_BACKTRACKS = 1
 
@@ -367,6 +367,27 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
             raise ValueError(f"Planner marked needs_sql but produced no SQL for {candidate['source_id']}")
         rows, bytes_billed = bigquery_accessor.run(sql, byte_cap=cap, timeout_seconds=guardrails.QUERY_TIMEOUT_SECONDS)
         return {"rows": rows, "bytes_billed": bytes_billed, "sql": sql, "params": {}, "doc": None}
+
+    if candidate["kind"] == "sec_edgar":
+        # Free, unbilled REST source — no byte cap/guardrail concept, no SQL.
+        # sec_edgar_accessor.fetch_metric() returns rows=[] (not an exception)
+        # when the company is real but has no reported value for this
+        # metric/year, so it flows through the same `if not rows:` handling
+        # as an ad-hoc BigQuery query that finds nothing. Genuine failures
+        # (unresolvable company, unknown curated metric, network/HTTP errors)
+        # raise SecEdgarError, which is caught by the generic `except
+        # Exception` branch in run()'s fetch loop like any other fetch error.
+        params = plan.get("params", {})
+        doc = okf_loader.load_by_id(candidate["source_id"])
+        result = sec_edgar_accessor.fetch_metric(
+            company=params.get("company", ""),
+            metric=params.get("metric", ""),
+            fiscal_year=params.get("fiscal_year"),
+        )
+        bound_params = {"company": result["entity_name"], "cik": result["cik"], "metric": result["concept"]}
+        if params.get("fiscal_year"):
+            bound_params["fiscal_year"] = params["fiscal_year"]
+        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
 
     # Non-BigQuery source ported from Resource Raiser, described purely via OKF.
     doc = okf_loader.load_by_id(candidate["source_id"])
