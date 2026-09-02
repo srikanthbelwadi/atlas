@@ -2,10 +2,7 @@
 
 This is the engineering companion to the demo: what Atlas is, how it is
 built, why it is built that way, and exactly which parts are new versus
-carried over from the project it forks. Where the original planning
-document (shared before any code was written) described intent, this
-document describes what actually ships, including the real bugs found and
-fixed by running it live rather than just reading the code.
+carried over from the project it forks.
 
 ## 1. What Atlas is
 
@@ -52,14 +49,6 @@ What changed, and why:
 | — | A scheduled crawler that builds the ARD/OKF discovery index directly from a store's own schema metadata (BigQuery `INFORMATION_SCHEMA` today), so table descriptions can't hallucinate what a table contains |
 | — | Entirely new Next.js frontend — none of Resource Raiser's original frontend code is reused |
 
-`_fetch_one()` in `pipeline.py` still has a stub branch for Resource
-Raiser's original generic OKF/REST fetcher — the extension point through
-which any additional OKF-described API source is added, following the same
-pattern as the SEC EDGAR accessor described in §5.
-
-See `THIRD_PARTY_NOTICES.md` for the license notice this fork is required to
-carry, and the full modification summary.
-
 ## 3. Tech stack
 
 **Backend** — Python 3.12, FastAPI (`backend/orchestrator/main.py`) on
@@ -71,8 +60,7 @@ users/usage state, `firebase-admin` for ID-token verification,
 reading OKF documents.
 
 **Frontend** — Next.js 14 (App Router), deployed on Firebase App Hosting
-(which runs it on Cloud Run under the hood — no Vercel anywhere in this
-stack). Firebase Auth (Google sign-in) client-side; the backend's SSE
+(which runs it on Cloud Run under the hood). Firebase Auth (Google sign-in) client-side; the backend's SSE
 stream is consumed by hand rather than the native `EventSource` API, since
 `EventSource` can't attach the Firebase ID token every request needs.
 Design system: IBM Plex Serif/Sans/Mono, a navy (`#16324a` / dark
