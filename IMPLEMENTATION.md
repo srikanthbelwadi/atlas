@@ -289,21 +289,7 @@ reason, the literal SQL and bound parameters for every query actually
 executed, and a token/cost breakdown per model call. This is what survives
 after the live trace panel scrolls out of view.
 
-## 8. Deployment topology
-
-- **Frontend** — Firebase App Hosting, auto-deploys on every `git push` to
-  `main` that touches `frontend/**` (connected via the Firebase console to
-  this GitHub repo).
-- **Orchestrator** — Cloud Run, deployed manually: `gcloud builds submit`
-  + `gcloud run deploy` (no CI/CD wired yet — Workload Identity Federation
-  for GitHub Actions is the one still-open infra item; see
-  `infra/README.md`).
-- **Crawler** — Cloud Run Job, invoked on demand or by the weekly Cloud
-  Scheduler trigger set up in `infra/README.md`.
-- **Admin notification** — Cloud Functions 2nd gen, deployed independently
-  via `firebase deploy --only functions`.
-
-## 9. References
+## 8. References
 
 - **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** spec, [repository](https://github.com/ards-project/ard-spec).
 - **[Open Knowledge Format (OKF)](https://okf.md/spec/)** spec, [reference tooling](https://github.com/GoogleCloudPlatform/knowledge-catalog), [v0.2 trust-signals announcement](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
