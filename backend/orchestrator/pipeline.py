@@ -403,7 +403,7 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
 def _no_evidence_answer(question: str) -> dict:
     return {
         "question": question,
-        "narrative": "I couldn't find a public dataset that answers this well enough to cite. Try rephrasing, or narrow it to a specific place, time range, or metric.",
+        "narrative": "I couldn't find a data source that answers this well enough to cite. Try rephrasing, or narrow it to a specific place, time range, or metric.",
         "citations": [],
         "visualization": {"kind": "table", "data": "[]"},
     }

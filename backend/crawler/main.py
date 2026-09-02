@@ -97,7 +97,7 @@ def _describe_table(project: str, dataset: str, table_row) -> tuple[str, dict]:
     size_gb = (table_row.total_logical_bytes or 0) / (1024**3) if getattr(table_row, "total_logical_bytes", None) else None
     title = f"{dataset}.{table_name}"
     description = (
-        f"BigQuery public table `{full_ref}`. "
+        f"BigQuery table `{full_ref}`. "
         f"{table_row.row_count or 'unknown'} rows"
         + (f", ~{size_gb:.1f} GB." if size_gb else ".")
         + " Columns:\n" + "\n".join(column_lines[:60])  # cap prompt/embedding size for very wide tables
@@ -189,7 +189,7 @@ def prune(active_targets: list[tuple[str, str]]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Atlas BigQuery public-dataset crawler")
+    parser = argparse.ArgumentParser(description="Atlas BigQuery dataset crawler (works against any project/dataset the service account can read)")
     parser.add_argument("--prune", action="store_true", help="also delete embeddings rows for datasets no longer in targets.py")
     args = parser.parse_args()
 

@@ -56,7 +56,7 @@ export default function Home() {
               rather than a second "Atlas" lockup stacked directly under it. */}
           {events.length === 0 && !answer && !error && (
             <div style={{ fontSize: "0.85rem", color: "var(--ink-dim)", marginBottom: 4 }}>
-              Ask a question, get a cited answer from public data.
+              Ask a question, get a cited answer from large-scale data.
             </div>
           )}
 

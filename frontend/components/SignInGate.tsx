@@ -5,13 +5,13 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import Logo from "@/components/Logo";
 
-const DATASET_CATEGORIES = ["COVID-19", "Air quality", "Census & demographics", "Crime", "Campaign finance", "Climate"];
+const DATASET_CATEGORIES = ["SEC filings (API)", "Labor & economics", "Census & demographics", "Air quality & climate", "Public health", "City operations", "Campaign finance"];
 
 const HOW_IT_WORKS = [
   {
     title: "Discover",
     body:
-      "Every public dataset is described once, in the Agentic Resource Discovery (ARD) and Open Knowledge Format (OKF) — searched by meaning at question time, not wired up one integration at a time.",
+      "Every data source — a warehouse table, an operational store, an API — is described once in the Open Knowledge Format (OKF) and indexed for Agentic Resource Discovery (ARD), then searched by meaning at question time instead of wired up one integration at a time.",
   },
   {
     title: "Plan",
@@ -33,11 +33,11 @@ const HOW_IT_WORKS = [
 const FEATURES = [
   {
     title: "Described once, not wired by hand",
-    body: "Adding a dataset means writing an ARD/OKF description, not a new integration — the discovery step searches those descriptions by meaning, so the catalog grows without per-source glue code.",
+    body: "Adding a source — private or public, table or API — means writing an OKF description, not a new integration. The discovery step searches those descriptions by meaning, so the catalog grows without per-source glue code.",
   },
   {
     title: "Every figure, never invented",
-    body: "The model never answers from what it already knows. Every number comes from a real, guarded BigQuery query and is cited back to its exact source and OKF trust tier — unverified, machine-confirmed, or human-reviewed.",
+    body: "The model never answers from what it already knows. Every number comes from a real, guarded query — BigQuery today, any OKF-described store or API by the same path — and is cited back to its exact source and trust tier: unverified, machine-confirmed, or human-reviewed.",
   },
   {
     title: "Refuses rather than guesses",
@@ -72,11 +72,12 @@ export default function SignInGate({ children }: { children: ReactNode }) {
             Built on ARD + OKF, answered by Gemini
           </div>
           <h2 style={{ fontSize: "2rem", marginBottom: 16, maxWidth: 620, marginLeft: "auto", marginRight: "auto" }}>
-            Ask public data a question.
+            Ask large-scale data a question.
           </h2>
           <p style={{ color: "var(--ink-dim)", maxWidth: 520, margin: "0 auto 30px", fontSize: "1.02rem" }}>
-            Atlas turns a plain-English question into a cited answer — discovered, planned, and verified against
-            public BigQuery datasets in real time.
+            Atlas turns a plain-English question into a cited, budgeted answer from any data source described in OKF —
+            a warehouse, an operational store, or an API — discovered, planned, and verified in real time. The demo runs
+            on BigQuery datasets and the SEC EDGAR API.
           </p>
           <button onClick={() => signIn()} className="cta-button">
             Sign in with Google
@@ -104,7 +105,7 @@ export default function SignInGate({ children }: { children: ReactNode }) {
 
         {/* USP feature grid */}
         <section className="container" style={{ padding: "40px 0 48px" }}>
-          <h3 className="section-heading">Why it's not just a chatbot on top of BigQuery</h3>
+          <h3 className="section-heading">Why it's not just a chatbot on top of a database</h3>
           <div className="feature-grid">
             {FEATURES.map((f) => (
               <div key={f.title} className="feature-card">
@@ -117,7 +118,7 @@ export default function SignInGate({ children }: { children: ReactNode }) {
 
         {/* Dataset categories */}
         <section className="container" style={{ padding: "0 0 56px", textAlign: "center" }}>
-          <div style={{ color: "var(--ink-dim)", fontSize: "0.82rem", marginBottom: 14 }}>Some of what's covered today</div>
+          <div style={{ color: "var(--ink-dim)", fontSize: "0.82rem", marginBottom: 14 }}>In the demo catalog today — hundreds of millions of rows across BigQuery datasets, plus the SEC EDGAR API</div>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 520, margin: "0 auto" }}>
             {DATASET_CATEGORIES.map((c) => (
               <span key={c} className="pill">

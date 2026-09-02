@@ -150,7 +150,7 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onFocus={(e) => e.currentTarget.select()}
-          placeholder="Ask a question a public dataset can answer…"
+          placeholder="Ask a question your data can answer…"
           disabled={busy}
           style={{
             flex: 1,

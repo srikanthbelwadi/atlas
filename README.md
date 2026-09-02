@@ -1,21 +1,28 @@
 # Atlas
 
-A natural-language front door to every public BigQuery dataset — wrapped in
-[ARD](https://agenticresourcediscovery.org/spec/)/[OKF](https://okf.md/spec/)
-discovery, answered by Gemini, and grown from
+A natural-language front door to large-scale data — any data store or API
+described once in [OKF](https://okf.md/spec/), discovered through
+[ARD](https://agenticresourcediscovery.org/spec/), answered by Gemini under
+hard cost guardrails, and grown from
 [Resource Raiser](https://github.com/TechSoup/resource-raiser)'s
 discover → plan → fetch → check → synthesize engine.
 
+The approach works for enterprise private warehouses, operational stores and
+internal APIs exactly as it does for the demo. BigQuery is the first-class
+executor; the **demo instance** is pointed at a curated set of BigQuery
+datasets plus the SEC EDGAR API because they are large, real, and free to
+query without credentials — not because the design is limited to them.
+
 This repository is a derivative work of TechSoup's Resource Raiser (Apache License 2.0). Original copyright and license notices are retained in `THIRD_PARTY_NOTICES.md` as required by that license.
 
-See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/OKF wrapper over BigQuery public datasets, life of a query end to end, cost guardrails, grounding/citation model, the live reasoning trace, and exactly what was kept vs. replaced vs. newly built relative to Resource Raiser.
+See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/OKF catalog over BigQuery and API sources, life of a query end to end, cost guardrails, grounding/citation model, the live reasoning trace, and exactly what was kept vs. replaced vs. newly built relative to Resource Raiser.
 
 ## Layout
 
 - `frontend/` — Next.js app, deployed via Firebase App Hosting
 - `backend/orchestrator/` — the discover → plan → fetch → check → synthesize pipeline (Cloud Run)
 - `backend/accessor/` — generic OKF-driven fetcher (REST sources) + guarded BigQuery executor
-- `backend/crawler/` — scheduled BigQuery public-dataset enumeration + OKF/embedding generation (Cloud Run Job)
+- `backend/crawler/` — scheduled BigQuery dataset enumeration + OKF/embedding generation (Cloud Run Job); point it at any project/dataset the service account can read
 - `okf-catalog/` — git-versioned OKF bundle: the source of truth for the ARD registry
 - `infra/` — infrastructure setup (Terraform or gcloud scripts): project, IAM, BigQuery, Cloud Run, Scheduler
 - `.github/workflows/` — CI/CD: PR preview channels, backend deploy, weekly catalog refresh
@@ -48,11 +55,11 @@ See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/O
 
 `backend/accessor/bigquery_accessor.py` never runs SQL without a preceding dry run against the caller's byte cap, and always sets `maximum_bytes_billed` on the real job as a server-side backstop. `backend/orchestrator/guardrails.py` tracks each user's month-to-date estimated spend in Firestore and blocks new queries once the $100/user ceiling is hit. `okf-catalog/` has two worked examples: a crawler-style `Table` doc (`bigquery-public-data.covid19_open_data`) and a human-reviewed `AttestedComputation` template (case rate by county/year) — the trusted, parameterized-SQL path the plan calls out as the preferred route whenever a question fits a known shape.
 
-Not yet wired: the generic OKF-driven fetcher for non-BigQuery sources ported from Resource Raiser (`_fetch_one()` in `pipeline.py` has a stub branch for it today). The `on_user_created` Cloud Function referenced in `main.py`'s docstring is now built — see `infra/functions/on_user_created/`.
+API sources are added the way SEC EDGAR was: one OKF document plus one accessor module (`backend/accessor/sec_edgar_accessor.py` is the template); `_fetch_one()` in `pipeline.py` is the dispatch point. The `on_user_created` Cloud Function referenced in `main.py`'s docstring is built — see `infra/functions/on_user_created/`.
 
 ### Crawler
 
-`backend/crawler/main.py` is a Cloud Run Job entrypoint (`python -m backend.crawler.main`, weekly via Cloud Scheduler once deployed): for each `(project, dataset)` in the curated allowlist in `targets.py`, it enumerates tables via `INFORMATION_SCHEMA`, builds a deterministic schema-derived description (never model-generated, so it can't hallucinate what a table contains — see the trust note in `main.py`), embeds it, and upserts into `ard_catalog.embeddings`, which `discovery.py` queries with BigQuery `VECTOR_SEARCH` at request time. The target list is deliberately a curated ~14 datasets, not all of `bigquery-public-data` — most of that project is either far larger than the byte cap makes usable or too niche for a general natural-language front door.
+`backend/crawler/main.py` is a Cloud Run Job entrypoint (`python -m backend.crawler.main`, weekly via Cloud Scheduler once deployed): for each `(project, dataset)` in the curated allowlist in `targets.py`, it enumerates tables via `INFORMATION_SCHEMA`, builds a deterministic schema-derived description (never model-generated, so it can't hallucinate what a table contains — see the trust note in `main.py`), embeds it, and upserts into `ard_catalog.embeddings`, which `discovery.py` queries with BigQuery `VECTOR_SEARCH` at request time. The demo target list is a curated 14 datasets from `bigquery-public-data` (see `IMPLEMENTATION.md` §5 for what each covers and how large it is); the same crawler runs unchanged against any private project/dataset the service account can read.
 
 ### Frontend
 
@@ -67,5 +74,5 @@ Not yet wired: the generic OKF-driven fetcher for non-BigQuery sources ported fr
 
 - **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** — the discovery-side specification `discovery.py`'s candidate resolution is modeled on: resources described once, indexed by a registry, and searched rather than manually wired up. Spec repository: [ards-project/ard-spec](https://github.com/ards-project/ard-spec).
 - **[Open Knowledge Format (OKF)](https://okf.md/spec/)** — the markdown-with-YAML-frontmatter format `okf-catalog/` is written in, including the three-tier trust model (`unverified` / `machine-confirmed` / `human-reviewed`) surfaced throughout the pipeline and UI. Reference tooling: [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog); announcement: [Google Cloud Blog](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
-- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** — the discover → plan → fetch → check → synthesize pipeline this project forks and re-targets at public BigQuery datasets. See `THIRD_PARTY_NOTICES.md` for the Apache-2.0 notice and a summary of what changed.
+- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** — the discover → plan → fetch → check → synthesize pipeline this project forks and extends with a guarded BigQuery executor and OKF-described API sources. See `THIRD_PARTY_NOTICES.md` for the Apache-2.0 notice and a summary of what changed.
 - **`IMPLEMENTATION.md`** — this project's own engineering documentation: architecture, tech stack, life of a query, cost/guardrail design, grounding and citations, the live reasoning trace, and a detailed fork-vs-new-work breakdown against Resource Raiser.

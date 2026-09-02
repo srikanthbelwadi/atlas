@@ -3,7 +3,7 @@ Discover stage — ARD-style candidate resolution.
 
 Two sources of candidates, merged:
 
-  1. BigQuery public datasets, via the crawler-maintained `ard_catalog`
+  1. Crawled BigQuery datasets, via the crawler-maintained `ard_catalog`
      dataset in our own project: `ard_catalog.embeddings` holds one row per
      crawled Table/AttestedComputation OKF doc (doc_id, embedding, metadata
      JSON). We embed the question once (llm.embed) and rank candidates with
@@ -112,8 +112,8 @@ def _search_okf_catalog(question_embedding: list[float], top_k: int) -> list[dic
 
 
 def discover(question: str) -> list[dict]:
-    """Returns merged, score-sorted candidates from BigQuery public-dataset
-    coverage and the hand-authored OKF catalog, deduplicated by source_id."""
+    """Returns merged, score-sorted candidates from the crawled BigQuery
+    catalog and the hand-authored OKF catalog, deduplicated by source_id."""
     question_embedding = llm.embed(question)
     candidates = _search_bq_catalog(question_embedding, TOP_K) + _search_okf_catalog(question_embedding, TOP_K)
 
