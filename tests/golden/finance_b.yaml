@@ -19,7 +19,7 @@ questions:
     text: "JPMorgan grew deposits 6% in 2019 while its net income reached $36.4 billion, total assets stood at $2.69 trillion and its return on assets was 1.33%."
     expect: {kind: verdict_table, claims_min: 3, verdicts_include: [verified, not_verifiable]}
   - id: B5
-    q: "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2019?"
+    q: "According to their SEC 10-Q filings, which state commercial banks (SIC code 6022) reported a quarterly net loss in 2019?"
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.sec_quarterly_financials, max_bytes_gb: 10}
   - id: B6
     q: "What was Lehman Brothers' revenue in 2024?"

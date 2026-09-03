@@ -29,7 +29,7 @@ export const FINANCE_EXAMPLES: ExampleGroup[] = [
       "What was JPMorgan's net income for fiscal 2019 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?",
       "Compare return on assets for the five largest US banks by deposits, using the latest FDIC figures.",
       "Revenue for Apple, Microsoft and Nvidia over the last five fiscal years.",
-      "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2019?",
+      "According to their SEC 10-Q filings, which state commercial banks (SIC code 6022) reported a quarterly net loss in 2019?",
     ],
   },
 ];
