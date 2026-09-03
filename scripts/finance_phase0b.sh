@@ -21,7 +21,7 @@ echo "-- fdic_banks.institutions: first 20 columns"
 bq show --schema --format=prettyjson "bigquery-public-data:fdic_banks.institutions" \
   | python3 -c "import json,sys; print(', '.join(c['name']+' ('+c['type']+')' for c in json.load(sys.stdin)[:20]))"
 bq query --use_legacy_sql=false --format=pretty "
-SELECT JSON_TYPE(metadata) AS metadata_type, COUNTIF(doc_id LIKE '%#finance') AS finance_rows, COUNT(*) AS rows
+SELECT JSON_TYPE(metadata) AS metadata_type, COUNTIF(doc_id LIKE '%#finance') AS finance_rows, COUNT(*) AS row_count
 FROM \`${PROJECT}.ard_catalog.embeddings\` GROUP BY 1"
 
 echo "== 2. crawler rebuild + finance re-crawl"
@@ -30,7 +30,7 @@ gcloud run jobs deploy atlas-crawler --image="${IMAGE_REPO}/atlas-crawler:latest
   --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT}" --max-retries=1 --task-timeout=20m --quiet
 gcloud run jobs execute atlas-crawler --region="$REGION" --args="--pack,finance" --wait
 bq query --use_legacy_sql=false --format=pretty "
-SELECT JSON_TYPE(metadata) AS metadata_type, JSON_VALUE(metadata, '$.pack') AS pack, COUNT(*) AS rows
+SELECT JSON_TYPE(metadata) AS metadata_type, JSON_VALUE(metadata, '$.pack') AS pack, COUNT(*) AS row_count
 FROM \`${PROJECT}.ard_catalog.embeddings\` GROUP BY 1, 2 ORDER BY 2"
 echo "-- crosswalk check, CFPB + FDIC halves (empty = every seed row resolves):"
 bq query --use_legacy_sql=false --format=pretty < infra/finance/xref_check.sql || true

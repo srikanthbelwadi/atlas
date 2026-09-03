@@ -9,8 +9,8 @@ description: >
   10-K and 10-Q filings (`numbers`), one row per filing (`submission`), the
   tag dictionary (`measure_tag`) and SIC codes. In the finance pack this
   stands in for a fundamentals data warehouse or the output of the
-  financial close. The schema below is the SEC's documented layout and is
-  confirmed by the Atlas crawler before any template is run against it.
+  financial close. Column names below are as crawled (they differ from the
+  SEC's own file layout).
   Columns (numbers): adsh (STRING, accession), tag (STRING), version
   (STRING), coreg (STRING), ddate (DATE, period end), qtrs (INTEGER,
   duration in quarters; 0 = instant), uom (STRING), value (FLOAT),
@@ -20,9 +20,9 @@ description: >
 trust: human-reviewed
 reviewer: Bel
 reviewed_on: 2026-09-03
-stale_after: 2026-12-01
-lifecycle: draft
-version: "0.1"
+stale_after: 2027-03-01
+lifecycle: active
+version: "1"
 tags: [sec, xbrl, filings, 10-k, fundamentals, financial-statements, finance]
 source:
   kind: bigquery
@@ -33,19 +33,16 @@ source:
   stands_in_for: fundamentals warehouse / financial-close output
 ---
 
-## Status
-
-`lifecycle: draft` until the finance-pack crawl confirms table and column
-names (phase 0.3 of the finance plan). Discovery still lists it so the
-planner knows the source exists, but `ac.sec_fact_from_bq` — the only path
-that runs SQL against it — is what gets promoted to `active` once the crawl
-log is in.
-
 ## Notes for query planning
 
-- Never draft ad-hoc SQL over `numbers`: the annual-fact selection rule
-  (10-K, `qtrs = 4` for flows or `0` for instants, latest `filed` per fiscal
-  year, `uom = 'USD'`) is easy to get subtly wrong and is encoded once in
-  `ac.sec_fact_from_bq`.
-- `fy` is the filer's fiscal year and `ddate` its period end; a 10-K also
-  carries prior-year comparatives under the same `adsh`.
+- Prefer `ac.sec_fact_from_bq` for any single-company annual figure: the
+  selection rule (10-K, `number_of_quarters = 4` for flows or `0` for
+  instants, `num_dimensions = 0`, latest `date_filed` per fiscal year) is
+  easy to get subtly wrong.
+- Ad-hoc SQL is acceptable for screening questions (e.g. which filers in a
+  SIC code reported a loss): join `numbers` to `submission` on
+  `submission_number`, filter `measure_tag`, and always filter
+  `fiscal_year` / `period_end_date` to keep the scan under the cap; dates
+  are yyyymmdd integers, so `period_end_date BETWEEN 20250101 AND 20251231`.
+- `fiscal_year` is the filing's fiscal year; a 10-K also carries prior-year
+  comparatives under the same `submission_number`.

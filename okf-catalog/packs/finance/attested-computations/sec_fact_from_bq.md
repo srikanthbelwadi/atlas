@@ -13,9 +13,9 @@ description: >
 trust: human-reviewed
 reviewer: Bel
 reviewed_on: 2026-09-03
-stale_after: 2026-12-01
-lifecycle: draft
-version: "0.1"
+stale_after: 2027-03-01
+lifecycle: active
+version: "1"
 tags: [sec, xbrl, 10-k, annual, fiscal-year, bulk, bigquery, finance]
 source:
   kind: bigquery
@@ -38,7 +38,7 @@ sources:
 cost_profile:
   expected_bytes: 8000000000
   cap_bytes: 21474836480
-citation_template: "SEC Financial Statement Data Sets (BigQuery mirror); 10-K fact for the fiscal year: qtrs = 4 for flows / 0 for balances, latest filed, uom USD; tag per backend/accessor/xbrl_metrics.py."
+citation_template: "SEC Financial Statement Data Sets (BigQuery mirror); 10-K fact for the fiscal year: number_of_quarters = 4 for flows / 0 for balances, non-dimensional, latest filed; tag per backend/accessor/xbrl_metrics.py."
 computation:
   runtime:
     executor: bigquery
@@ -105,49 +105,53 @@ computation:
         LIMIT 1
       ),
       filings AS (
-        SELECT s.adsh, s.name, s.fy, s.filed, s.form, s.period
+        SELECT s.submission_number, s.company_name, s.fiscal_year, s.date_filed, s.form, s.period
         FROM `bigquery-public-data.sec_quarterly_financials.submission` s
-        JOIN target t ON s.cik = t.cik
-        WHERE s.fy = @fiscal_year AND s.fp = 'FY' AND s.form IN ('10-K', '10-K/A')
+        JOIN target t ON s.central_index_key = t.cik
+        WHERE s.fiscal_year = @fiscal_year AND s.fiscal_period_focus = 'FY' AND s.form IN ('10-K', '10-K/A')
       ),
       facts AS (
-        SELECT f.adsh, f.name, f.fy, f.filed, f.form, n.tag, n.ddate, n.qtrs, n.uom, n.value, m.ord
+        SELECT f.submission_number, f.company_name, f.fiscal_year, f.date_filed, f.form,
+               n.measure_tag, n.period_end_date, n.number_of_quarters, n.units, n.value, m.ord
         FROM `bigquery-public-data.sec_quarterly_financials.numbers` n
-        JOIN filings f ON n.adsh = f.adsh
-        JOIN metric_tags m ON n.tag = m.tag
-        WHERE n.uom IN ('USD', 'shares', 'USD/shares')
-          AND (n.coreg IS NULL OR n.coreg = '')
-          AND ((m.period_kind = 'duration' AND n.qtrs = 4) OR (m.period_kind = 'instant' AND n.qtrs = 0))
-          AND n.ddate = f.period
+        JOIN filings f ON n.submission_number = f.submission_number
+        JOIN metric_tags m ON n.measure_tag = m.tag
+        WHERE n.units IN ('USD', 'shares', 'USD/shares')
+          AND (n.coregistrant IS NULL OR n.coregistrant = '')
+          AND n.num_dimensions = 0
+          AND ((m.period_kind = 'duration' AND n.number_of_quarters = 4) OR (m.period_kind = 'instant' AND n.number_of_quarters = 0))
+          AND n.period_end_date = f.period
       )
       SELECT
         'sec_bulk_bq' AS source,
-        name AS entity_name,
-        fy AS fiscal_year,
-        tag AS concept,
+        company_name AS entity_name,
+        fiscal_year,
+        measure_tag AS concept,
         value,
-        uom AS unit,
-        CAST(ddate AS STRING) AS period_end,
+        units AS unit,
+        FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%Y%m%d', CAST(period_end_date AS STRING))) AS period_end,
         form,
-        CAST(filed AS STRING) AS filed,
-        adsh AS accession
+        FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%Y%m%d', CAST(date_filed AS STRING))) AS filed,
+        submission_number AS accession
       FROM facts
-      QUALIFY ROW_NUMBER() OVER (ORDER BY filed DESC, ord ASC) = 1
+      QUALIFY ROW_NUMBER() OVER (ORDER BY date_filed DESC, ord ASC) = 1
 ---
 
-## Status
+## Schema (confirmed from the crawl, 2026-09-03)
 
-`lifecycle: draft`: the column names (`adsh, tag, ddate, qtrs, uom, value,
-coreg` in `numbers`; `cik, name, fy, fp, form, period, filed` in
-`submission`) follow the SEC's published Financial Statement Data Sets
-layout and are confirmed against the crawled schema before this template
-is promoted to `active`. Until then the planner prefers
-`ac.sec_fact_annual_api` (the API path) for single-source questions.
+`submission`: `submission_number` (accession), `central_index_key`,
+`company_name`, `form`, `fiscal_year`, `fiscal_period_focus` (FY, Q1…),
+`period` and `date_filed` (integers, yyyymmdd). `numbers`:
+`submission_number`, `measure_tag`, `period_end_date` (yyyymmdd integer),
+`number_of_quarters` (0 = instant), `units`, `value`, `coregistrant`,
+`num_dimensions`. These differ from the SEC's published column names,
+which is exactly why this template was held in draft until the crawl.
 
 ## Selection rule (mirrors `ac.sec_fact_annual_api`)
 
 10-K or 10-K/A with `fp = FY` for the fiscal year; the fact whose period
 end equals the filing's own `period` (so a restated prior year is never
-picked); `qtrs = 4` for income-statement/cash-flow flows and `qtrs = 0` for
-balance-sheet instants; no co-registrant; latest `filed` first, then the
+picked); `number_of_quarters = 4` for income-statement/cash-flow flows and
+`0` for balance-sheet instants; no co-registrant and no dimensions
+(consolidated total, not a segment); latest `date_filed` first, then the
 canonical tag (`ord`). One row or none.
