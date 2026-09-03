@@ -26,6 +26,10 @@ from google.cloud import firestore
 
 TEMPLATE_BYTE_CAP = int(os.environ.get("ATLAS_TEMPLATE_BYTE_CAP", 20 * 1024**3))   # 20 GB
 ADHOC_BYTE_CAP = int(os.environ.get("ATLAS_ADHOC_BYTE_CAP", 10 * 1024**3))          # 10 GB
+# A reviewed template may declare its own cap (cost_profile.cap_bytes in its
+# OKF doc) when its source is simply big — the SEC `numbers` table scans ~21
+# GB — but never above this hard maximum, which is the real backstop.
+TEMPLATE_BYTE_CAP_MAX = int(os.environ.get("ATLAS_TEMPLATE_BYTE_CAP_MAX", 40 * 1024**3))   # 40 GB
 QUERY_TIMEOUT_SECONDS = int(os.environ.get("ATLAS_QUERY_TIMEOUT_SECONDS", 570))     # leaves ~30s headroom inside the 10-minute (600s) Cloud Run request budget
 
 MONTHLY_COST_CEILING_USD = float(os.environ.get("ATLAS_MONTHLY_COST_CEILING_USD", 100.0))
@@ -67,6 +71,15 @@ def byte_cap_for(needs_sql: bool, is_template: bool) -> int:
     if not needs_sql:
         return 0
     return TEMPLATE_BYTE_CAP if is_template else ADHOC_BYTE_CAP
+
+
+def template_byte_cap(cost_profile: dict | None) -> int:
+    """The cap for one attested computation: its declared cap_bytes, clamped
+    to [TEMPLATE_BYTE_CAP, TEMPLATE_BYTE_CAP_MAX]; the default when absent."""
+    declared = int((cost_profile or {}).get("cap_bytes") or 0)
+    if declared <= 0:
+        return TEMPLATE_BYTE_CAP
+    return max(TEMPLATE_BYTE_CAP, min(declared, TEMPLATE_BYTE_CAP_MAX))
 
 
 def check_byte_estimate(estimated_bytes: int, cap: int) -> None:

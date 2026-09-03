@@ -31,8 +31,9 @@ computation:
         required: true
         description: >
           Company name or stock ticker as named in the question, e.g. "Apple"
-          or "AAPL". Resolved to a SEC CIK via SEC's own ticker/name list —
-          never guessed.
+          or "AAPL"; several companies may be listed separated by commas
+          ("Apple, Microsoft, Nvidia"). Each is resolved to a SEC CIK via
+          SEC's own ticker/name list — never guessed.
       - name: metric
         type: STRING
         required: true

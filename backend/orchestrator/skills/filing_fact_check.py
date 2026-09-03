@@ -122,9 +122,19 @@ async def run(text: str, user_id: str, pack: str = "finance"):
             try:
                 fetched = await _to_thread(pipeline._fetch_one, candidate, {"params": params}, claim.get("text", ""))
             except guardrails.GuardrailError as exc:
-                yield {"event": "guardrail.blocked", "data": {"code": exc.code, "message": exc.message, **exc.detail}}
-                yield {"event": "error", "data": {"code": exc.code, "message": exc.message, "walkthrough": finalize()}}
-                return
+                if exc.code == "monthly_budget_exceeded":
+                    yield {"event": "guardrail.blocked", "data": {"code": exc.code, "message": exc.message, **exc.detail}}
+                    yield {"event": "error", "data": {"code": exc.code, "message": exc.message, "walkthrough": finalize()}}
+                    return
+                # A byte-cap hit on one claim's query is that claim's verdict —
+                # the other claims still get checked.
+                yield {"event": "guardrail.blocked", "data": {"code": exc.code, "message": exc.message, "claim_id": claim.get("id"), **exc.detail}}
+                row = {**base, "reported": None, "source": None, "accession": None, "delta_pct": None,
+                       "verdict": "not_verifiable", "note": f"Not checked: {exc.message}"}
+                rows.append(row)
+                walkthrough["backtracks"].append({"from": doc.id, "reason": exc.code})
+                yield {"event": "claim.verdict", "data": row}
+                continue
             except Exception as exc:  # noqa: BLE001 — an unresolvable company is a verdict, not a crash
                 row = {**base, "reported": None, "source": None, "accession": None, "delta_pct": None,
                        "verdict": "not_verifiable", "note": f"Couldn't fetch: {exc}"}

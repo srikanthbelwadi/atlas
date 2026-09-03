@@ -264,7 +264,7 @@ def synthesize(question: str, evidence: dict, pack: str = packs.DEFAULT_PACK) ->
     prompt = (
         "You are Atlas. Compose a grounded, cited answer to the user's "
         "question using ONLY the evidence provided — never invent figures. "
-        f"Question: {question!r}\nEvidence: {json.dumps(evidence)}\n"
+        f"Question: {question!r}\nEvidence: {json.dumps(evidence, default=str)}\n"
         "Choose the visualization kind that best fits the shape of the "
         "evidence (a single figure -> kpi_cards, a ranking/comparison -> "
         "bar, a time series -> line, a list of records -> table, a "

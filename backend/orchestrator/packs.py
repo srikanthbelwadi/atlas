@@ -50,7 +50,15 @@ PACKS: dict[str, dict] = {
             "use date_from='2021-01-01' and date_to='2023-03-31'. A question about 2024 or later "
             "cannot be answered from these tables — choose no candidate rather than invent one. "
             "The SEC BigQuery mirror ends with fiscal 2019 (filings to 2020-12-31); the SEC EDGAR API "
-            "templates are current, so prefer them for any filing question about fiscal 2020 or later.\n\n"
+            "templates are current, so prefer them for any filing question about fiscal 2020 or later.\n"
+            "- A question that asks whether two sources AGREE, to VERIFY or RECONCILE a figure, or mentions "
+            "both the EDGAR API and the SEC bulk data set, must use ac.sec_fact_reconcile.\n"
+            "- Screening questions (which filers/companies/banks reported X, filtered by SIC code, loss, "
+            "threshold) are NOT answered by a peer-ratio or single-company template: draft ad-hoc SQL "
+            "over sec_quarterly_financials (join numbers to submission on submission_number) with a "
+            "fiscal_year / period_end_date filter, or over fdic_banks.institutions for bank screens.\n"
+            "- Several companies in one question (\"Apple, Microsoft and Nvidia\") are fine for the EDGAR "
+            "templates: pass them all in the company parameter separated by commas.\n\n"
         ),
         "synthesis_rules": (
             "\n\nFinance-pack rule: the first sentence of the narrative must name the metric "

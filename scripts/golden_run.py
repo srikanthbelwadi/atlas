@@ -57,6 +57,8 @@ def check(expect, events):
     refusal = ("couldn't find a data source" in narrative.lower()) or (not used)
     failures = []
     path = expect.get("path")
+    if terminal.get("code") and path not in ("refusal", "refusal_or_no_finance_source"):
+        failures.append(f"error event: {terminal.get('code')} — {terminal.get('message')}")
     if path == "attested":
         if not (used or "").startswith("ac."):
             failures.append(f"expected attested path, used {used!r}")

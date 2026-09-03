@@ -392,7 +392,8 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
             return _fetch_composite(doc, plan, question)
 
     if candidate["kind"] == "bigquery" and candidate.get("type") == "AttestedComputation":
-        cap = guardrails.byte_cap_for(True, is_template=True)
+        doc = okf_loader.load_by_id(candidate["source_id"])
+        cap = guardrails.template_byte_cap(doc.cost_profile if doc else None)
         params = plan.get("params", {})
         rows, bytes_billed, doc, sql, bound_params = bigquery_accessor.run_attested_computation(
             candidate["source_id"], params, byte_cap=cap, timeout_seconds=guardrails.QUERY_TIMEOUT_SECONDS
@@ -418,15 +419,21 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
         # Exception` branch in run()'s fetch loop like any other fetch error.
         params = plan.get("params", {})
         doc = okf_loader.load_by_id(candidate["source_id"])
-        result = sec_edgar_accessor.fetch_metric(
-            company=params.get("company", ""),
-            metric=params.get("metric", ""),
-            fiscal_year=_as_int(params.get("fiscal_year")),
-        )
-        bound_params = {"company": result["entity_name"], "cik": result["cik"], "metric": result["concept"]}
+        companies = _split_companies(params.get("company", ""))
+        rows, names, ciks, concepts = [], [], [], []
+        for company in companies:
+            result = sec_edgar_accessor.fetch_metric(
+                company=company,
+                metric=params.get("metric", ""),
+                fiscal_year=_as_int(params.get("fiscal_year")),
+            )
+            names.append(result["entity_name"]); ciks.append(result["cik"]); concepts.append(result["concept"])
+            for r in result["rows"]:
+                rows.append({"company": result["entity_name"], **r} if len(companies) > 1 else r)
+        bound_params = {"company": ", ".join(names), "cik": ", ".join(ciks), "metric": " | ".join(sorted(set(concepts)))}
         if params.get("fiscal_year"):
             bound_params["fiscal_year"] = params["fiscal_year"]
-        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
+        return {"rows": rows, "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
 
     if candidate["kind"] == "sec_edgar_annual":
         # Finance pack: one annual fact, selected the 10-K way (see
@@ -472,6 +479,18 @@ def _no_evidence_answer(question: str) -> dict:
 
 
 # --- finance pack helpers ---------------------------------------------------
+
+def _split_companies(value) -> list[str]:
+    """"Apple, Microsoft and Nvidia" -> ["Apple", "Microsoft", "Nvidia"]. A
+    single name passes through untouched (including names with '&')."""
+    import re as _re
+    if isinstance(value, list):
+        parts = [str(v) for v in value]
+    else:
+        parts = _re.split(r",|;|\s+and\s+|\s+vs\.?\s+|\s+versus\s+", str(value or ""))
+    out = [p.strip() for p in parts if p and p.strip()]
+    return out or [str(value or "")]
+
 
 def _as_int(value):
     try:

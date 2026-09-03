@@ -36,8 +36,8 @@ sources:
     dataset: finance_pack
     table: entity_xref
 cost_profile:
-  expected_bytes: 8000000000
-  cap_bytes: 21474836480
+  expected_bytes: 22800000000
+  cap_bytes: 32212254720   # 30 GB: `numbers` scans ~21.2 GB (measured 2026-09-03); the server maximum is 40 GB
 citation_template: "SEC Financial Statement Data Sets (BigQuery mirror); 10-K fact for the fiscal year: number_of_quarters = 4 for flows / 0 for balances, non-dimensional, latest filed; tag per backend/accessor/xbrl_metrics.py."
 computation:
   runtime:

@@ -8,3 +8,4 @@ node_modules/
 # Python virtualenvs (e.g. infra/functions/on_user_created/venv) — never commit these,
 # they're machine-specific and huge. Missed when the venv was first created; fixing now.
 venv/
+.venv/

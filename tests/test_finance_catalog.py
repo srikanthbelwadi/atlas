@@ -236,3 +236,14 @@ def test_fact_check_number_parsing_and_verdicts():
     assert filing_fact_check._verdict(118.3e9, 130e9, False)[0] == "differs"
     assert filing_fact_check._verdict(None, 1.0, False)[0] == "not_verifiable"
     assert filing_fact_check._verdict(1.1, 1.2, True)[0] == "verified"
+
+
+def test_split_companies_and_template_cap():
+    assert pipeline._split_companies("Apple, Microsoft and Nvidia") == ["Apple", "Microsoft", "Nvidia"]
+    assert pipeline._split_companies("Procter & Gamble") == ["Procter & Gamble"]
+    assert pipeline._split_companies("JPMorgan vs Bank of America") == ["JPMorgan", "Bank of America"]
+    from backend.orchestrator import guardrails as g
+    assert g.template_byte_cap(None) == g.TEMPLATE_BYTE_CAP
+    assert g.template_byte_cap({"cap_bytes": 1}) == g.TEMPLATE_BYTE_CAP
+    assert g.template_byte_cap({"cap_bytes": 10**12}) == g.TEMPLATE_BYTE_CAP_MAX
+    assert g.template_byte_cap({"cap_bytes": 30 * 1024**3}) == 30 * 1024**3
