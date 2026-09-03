@@ -10,7 +10,9 @@ description: >
   report. The regulatory definition of ROA/ROE (annualised year-to-date
   over quarterly average balances), distinct from a ratio derived from
   XBRL 10-K facts. Use for "compare ROA of the five largest banks", "peer
-  table of the biggest banks", "which large bank has the highest ROE".
+  table of the biggest banks", "which large bank has the highest ROE". Not
+  for screening questions ("which filers reported a net loss", SIC codes) —
+  those are ad-hoc SQL.
 trust: human-reviewed
 reviewer: Bel
 reviewed_on: 2026-09-03
@@ -34,9 +36,13 @@ computation:
     parameters:
       - name: measure
         type: STRING
-        required: false
-        default: total_deposits
-        description: Size measure for the peer set — "total_deposits" (default) or "total_assets".
+        required: true
+        description: >
+          The size measure the question ranks banks by — "total_deposits" when it says
+          "by deposits" / "largest banks", "total_assets" when it says "by assets". This
+          template applies ONLY to "the N largest banks" peer tables. A screening
+          question (which banks/filers reported a loss, a SIC code, a threshold) is not
+          a peer table: do not choose this template for it.
       - name: top_n
         type: INT64
         required: false

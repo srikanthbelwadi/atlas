@@ -405,7 +405,11 @@ def extract_claims(text: str, metric_keys: list[str], ratio_keys: list[str]) -> 
         "about a company's reported financials. For each claim, name the company as written, "
         "the fiscal year if stated (otherwise omit fiscal_year), the value or direction claimed, "
         "and map it to exactly one of these curated keys when one fits — otherwise leave metric "
-        "empty. Do not merge two claims into one; do not invent a year.\n"
+        "empty. Do not merge two claims into one; do not invent a year. claim_kind rules: a "
+        "reported amount ('net income reached $36.4 billion', 'total assets stood at $2.69 trillion') "
+        "is 'level'; a percentage or year-over-year change ('grew deposits 6%', 'revenue rose 12%') "
+        "is 'growth', NOT 'level', even when the metric is curated; a ratio stated as a percentage "
+        "('return on assets was 1.33%', 'efficiency ratio below 60%') is 'ratio'.\n"
         f"Metric keys (levels): {metric_keys}\nRatio keys: {ratio_keys}\n\n"
         f"Paragraph: {text!r}"
     )

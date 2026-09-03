@@ -108,9 +108,14 @@ async def run(text: str, user_id: str, pack: str = "finance"):
             is_level = metric in xbrl_metrics.CURATED_METRICS
             base = {"id": claim.get("id"), "claim": claim.get("text"), "entity": entity, "metric": metric or None,
                     "fiscal_year": fy, "claimed": claim.get("claimed_value")}
-            if not entity or not fy or not (is_ratio or is_level) or claim.get("claim_kind") in ("direction", "growth", "other"):
+            claimed_text = str(claim.get("claimed_value") or "")
+            percent_against_level = is_level and not is_ratio and "%" in claimed_text
+            if (not entity or not fy or not (is_ratio or is_level)
+                    or claim.get("claim_kind") in ("direction", "growth", "other") or percent_against_level):
                 row = {**base, "reported": None, "source": None, "accession": None, "delta_pct": None, "verdict": "not_verifiable",
-                       "note": "No attested computation covers this claim as written (needs a company, a fiscal year and a curated metric)."}
+                       "note": ("A growth or percentage-change claim about a level metric has no attested computation (Atlas verifies reported levels and curated ratios, not year-over-year changes)."
+                                if (percent_against_level or claim.get("claim_kind") == "growth")
+                                else "No attested computation covers this claim as written (needs a company, a fiscal year and a curated metric).")}
                 rows.append(row)
                 yield {"event": "claim.verdict", "data": row}
                 continue

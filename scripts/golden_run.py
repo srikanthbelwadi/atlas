@@ -17,6 +17,8 @@ Writes a markdown report (pass/fail per question with source, bytes, cost,
 elapsed) and exits non-zero if anything failed. Needs `requests` + `pyyaml`.
 """
 import argparse
+import functools
+print = functools.partial(print, flush=True)  # lines appear live even when piped through tee
 import json
 import sys
 import time
@@ -114,10 +116,12 @@ def check(expect, events):
         missing = set(expect["verdicts_include"]) - verdicts
         if missing:
             failures.append(f"verdicts missing {missing}")
+    verdict_rows = [p for e, p in events if e == "claim.verdict"]
     cost = (wt.get("cost") or {}).get("total_cost_usd")
     bytes_total = sum(q.get("bytes_billed", 0) for q in queries)
     return failures, {"source": used, "bytes_gb": round(bytes_total / 1024**3, 3), "cost_usd": cost, "elapsed_s": wt.get("elapsed_s"),
-                      "error": terminal.get("message") if terminal.get("code") else None}
+                      "error": terminal.get("message") if terminal.get("code") else None,
+                      "verdicts": verdict_rows}
 
 
 def main():
@@ -150,6 +154,8 @@ def main():
         lines.append(f"| {qid} | {label[:80]} | {status} | `{meta['source']}` | {meta['bytes_gb']} | {meta['cost_usd']} | {meta['elapsed_s']} |")
         if meta.get("error"):
             lines.append(f"|  | error: {meta['error']} | | | | | |")
+        for v in meta.get("verdicts") or []:
+            lines.append(f"|  | ↳ {v.get('verdict')}: {str(v.get('claim'))[:70]} → reported {v.get('reported')} ({v.get('source')}) {('— ' + str(v.get('note'))[:90]) if v.get('note') else ''} | | | | | |")
     if args.report:
         open(args.report, "w").write("\n".join(lines) + "\n")
         print(f"report: {args.report}")
