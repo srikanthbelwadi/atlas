@@ -55,7 +55,10 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 def _search_bq_catalog(question_embedding: list[float], top_k: int, pack: str = DEFAULT_PACK) -> list[dict]:
     """VECTOR_SEARCH over the crawler-maintained embeddings table, pre-filtered
-    to one pack (VECTOR_SEARCH accepts a filtered subquery as its base table;
+    to one pack. The `metadata` JSON column has been written two ways over
+    time (a JSON object, and a JSON-encoded string of one — the first
+    finance crawl surfaced the latter), so the filter reads the pack through
+    either encoding rather than silently treating every row as public (VECTOR_SEARCH accepts a filtered subquery as its base table;
     at this catalog size the brute-force path it implies is well under a
     second). Returns [] gracefully if the table doesn't exist yet (fresh
     deploy, crawler hasn't run) rather than failing discovery entirely."""
@@ -64,7 +67,7 @@ def _search_bq_catalog(question_embedding: list[float], top_k: int, pack: str = 
         SELECT base.doc_id, base.metadata, distance
         FROM VECTOR_SEARCH(
             (SELECT doc_id, embedding, metadata FROM {table}
-             WHERE COALESCE(JSON_VALUE(metadata, '$.pack'), '{DEFAULT_PACK}') = @pack),
+             WHERE COALESCE(JSON_VALUE(metadata, '$.pack'), JSON_VALUE(SAFE.PARSE_JSON(JSON_VALUE(metadata)), '$.pack'), '{DEFAULT_PACK}') = @pack),
             'embedding',
             (SELECT @question_embedding AS embedding),
             top_k => @top_k,
@@ -86,7 +89,15 @@ def _search_bq_catalog(question_embedding: list[float], top_k: int, pack: str = 
 
     out = []
     for row in rows:
-        meta = json.loads(row.metadata) if isinstance(row.metadata, str) else (row.metadata or {})
+        meta = row.metadata or {}
+        for _ in range(2):  # unwrap a JSON string (possibly double-encoded) into a dict
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except ValueError:
+                    meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
         out.append({
             "source_id": row.doc_id,
             "kind": "bigquery",

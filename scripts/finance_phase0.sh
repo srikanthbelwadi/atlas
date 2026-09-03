@@ -41,14 +41,11 @@ gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=at
 
 echo "== 3. what the finance crawl catalogued"
 bq query --use_legacy_sql=false --format=pretty "
-SELECT doc_id, JSON_VALUE(metadata, '$.row_count') AS row_count, JSON_VALUE(metadata, '$.size_gb') AS size_gb
+SELECT doc_id, JSON_TYPE(metadata) AS metadata_type
 FROM \`${PROJECT}.ard_catalog.embeddings\`
-WHERE JSON_VALUE(metadata, '$.pack') = 'finance' ORDER BY doc_id"
+WHERE doc_id LIKE '%#finance' ORDER BY doc_id"
 echo "-- SEC numbers/submission columns as crawled (for ac.sec_fact_from_bq promotion):"
-bq query --use_legacy_sql=false --format=pretty "
-SELECT doc_id, SUBSTR(JSON_VALUE(metadata, '$.description'), 1, 1200) AS description
-FROM \`${PROJECT}.ard_catalog.embeddings\`
-WHERE doc_id LIKE 'bq.bigquery-public-data.sec_quarterly_financials.%#finance'"
+for t in submission numbers; do echo "-- schema: sec_quarterly_financials.$t"; bq show --schema --format=prettyjson "bigquery-public-data:sec_quarterly_financials.$t" | python3 -c 'import json,sys; print(", ".join(f"{c[\"name\"]} ({c[\"type\"]})" for c in json.load(sys.stdin)))'; done
 echo "-- crosswalk check (empty = every seed row resolves):"
 bq query --use_legacy_sql=false --format=pretty < infra/finance/xref_check.sql || true
 
@@ -57,7 +54,7 @@ gcloud builds submit --config=infra/cloudbuild-orchestrator.yaml . --quiet
 gcloud run deploy atlas-orchestrator \
   --image="${IMAGE_REPO}/atlas-orchestrator:latest" --region="$REGION" \
   --no-traffic --tag=finance \
-  --update-env-vars="ATLAS_PACKS_ENABLED=public,finance" --quiet
+  --update-env-vars="^:^ATLAS_PACKS_ENABLED=public,finance" --quiet
 echo "-- tagged URL (use this for golden runs before promoting):"
 gcloud run services describe atlas-orchestrator --region="$REGION" --format="value(status.traffic)" | tr ';' '\n' | grep -i finance || true
 echo

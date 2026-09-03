@@ -182,11 +182,18 @@ def _upsert(rows: list[tuple[str, list[float], dict]]) -> None:
     # Small batches (a few thousand rows at most across the whole curated
     # list) — a straight load-then-MERGE is simpler and plenty fast here.
     tmp_table = f"{PROJECT_ID}.{ARD_CATALOG_DATASET}._staging_embeddings"
+    # Staging `metadata` is a plain STRING that the MERGE parses with
+    # PARSE_JSON. Loading a json.dumps() string straight into a JSON column
+    # stored it as a JSON *string* scalar rather than an object, which made
+    # `JSON_VALUE(metadata, '$.pack')` NULL on every row — found when the first
+    # finance crawl's rows were invisible to the pack filter. discovery.py
+    # and main.py read both encodings, so rows written the old way still
+    # work; new/updated rows are written as real objects from here on.
     job_config = bigquery.LoadJobConfig(
         schema=[
             bigquery.SchemaField("doc_id", "STRING"),
             bigquery.SchemaField("embedding", "FLOAT64", mode="REPEATED"),
-            bigquery.SchemaField("metadata", "JSON"),
+            bigquery.SchemaField("metadata", "STRING"),
         ],
         write_disposition="WRITE_TRUNCATE",
     )
@@ -194,7 +201,7 @@ def _upsert(rows: list[tuple[str, list[float], dict]]) -> None:
 
     client().query(f"""
         MERGE `{table_ref}` T
-        USING `{tmp_table}` S
+        USING (SELECT doc_id, embedding, PARSE_JSON(metadata) AS metadata FROM `{tmp_table}`) S
         ON T.doc_id = S.doc_id
         WHEN MATCHED THEN UPDATE SET embedding = S.embedding, metadata = S.metadata, updated_at = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN INSERT (doc_id, embedding, metadata, updated_at)

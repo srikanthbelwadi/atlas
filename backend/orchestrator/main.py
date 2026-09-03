@@ -199,12 +199,20 @@ def pack_catalog(pack: str, user: dict = Depends(require_approved_user)):
         client = bigquery.Client(project=PROJECT_ID)
         sql = f"""
             SELECT doc_id, metadata, updated_at FROM `{PROJECT_ID}.{ARD_CATALOG_DATASET}.embeddings`
-            WHERE COALESCE(JSON_VALUE(metadata, '$.pack'), '{packs.DEFAULT_PACK}') = @pack
+            WHERE COALESCE(JSON_VALUE(metadata, '$.pack'), JSON_VALUE(SAFE.PARSE_JSON(JSON_VALUE(metadata)), '$.pack'), '{packs.DEFAULT_PACK}') = @pack
             ORDER BY doc_id
         """
         job = client.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("pack", "STRING", pack)]))
         for row in job.result(timeout=20):
-            meta = _json_mod.loads(row.metadata) if isinstance(row.metadata, str) else (row.metadata or {})
+            meta = row.metadata or {}
+            for _ in range(2):  # unwrap a JSON string (possibly double-encoded) into a dict
+                if isinstance(meta, str):
+                    try:
+                        meta = _json_mod.loads(meta)
+                    except ValueError:
+                        meta = {}
+            if not isinstance(meta, dict):
+                meta = {}
             entries.append({
                 "id": row.doc_id, "title": meta.get("title", row.doc_id), "description": meta.get("description", ""),
                 "type": meta.get("type", "Table"), "kind": "bigquery", "executor": None, "trust": meta.get("trust", "machine-confirmed"),

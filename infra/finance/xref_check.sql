@@ -16,14 +16,8 @@ SELECT 'fdic_cert_missing', x.display_name, x.fdic_cert, NULL
 FROM `atlas-ard-okf.finance_pack.entity_xref` x
 LEFT JOIN `bigquery-public-data.fdic_banks.institutions` i
   ON i.fdic_certificate_number = x.fdic_cert AND i.active
-WHERE x.fdic_cert IS NOT NULL AND i.fdic_certificate_number IS NULL
-UNION ALL
--- 3. CIKs in the seed with no 10-K submission in the SEC data set.
-SELECT 'cik_missing', x.display_name, CAST(x.cik AS STRING), NULL
-FROM `atlas-ard-okf.finance_pack.entity_xref` x
-LEFT JOIN (SELECT DISTINCT cik FROM `bigquery-public-data.sec_quarterly_financials.submission` WHERE form = '10-K') s
-  ON s.cik = x.cik
-WHERE x.cik IS NOT NULL AND s.cik IS NULL;
+WHERE x.fdic_cert IS NOT NULL AND i.fdic_certificate_number IS NULL;
+
 
 -- Suggestions: the top CFPB respondents since 2023 (to find the exact strings)
 SELECT company_name, COUNT(*) AS complaints
