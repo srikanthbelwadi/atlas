@@ -37,7 +37,7 @@ gcloud run jobs deploy atlas-crawler \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT}" --max-retries=1 --task-timeout=20m --quiet
 gcloud run jobs execute atlas-crawler --region="$REGION" --args="--pack,finance" --wait
 echo "-- crawler log (last 80 lines):"
-gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=atlas-crawler" --limit=80 --format="value(textPayload)" --freshness=30m | tac || true
+gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=atlas-crawler" --limit=80 --format="value(textPayload)" --freshness=30m | (tail -r 2>/dev/null || tac) || true
 
 echo "== 3. what the finance crawl catalogued"
 bq query --use_legacy_sql=false --format=pretty "
