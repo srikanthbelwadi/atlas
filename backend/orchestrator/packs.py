@@ -48,7 +48,9 @@ PACKS: dict[str, dict] = {
             "- Data vintage: the CFPB complaint mirror ends 2023-03-23 and the FDIC snapshot is "
             "late 2022. 'Latest year' means 2022. When a question names no dates for complaints, "
             "use date_from='2021-01-01' and date_to='2023-03-31'. A question about 2024 or later "
-            "cannot be answered from these tables — choose no candidate rather than invent one.\n\n"
+            "cannot be answered from these tables — choose no candidate rather than invent one. "
+            "The SEC BigQuery mirror ends with fiscal 2019 (filings to 2020-12-31); the SEC EDGAR API "
+            "templates are current, so prefer them for any filing question about fiscal 2020 or later.\n\n"
         ),
         "synthesis_rules": (
             "\n\nFinance-pack rule: the first sentence of the narrative must name the metric "

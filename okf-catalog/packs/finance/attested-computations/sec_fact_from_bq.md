@@ -137,7 +137,13 @@ computation:
       QUALIFY ROW_NUMBER() OVER (ORDER BY date_filed DESC, ord ASC) = 1
 ---
 
-## Schema (confirmed from the crawl, 2026-09-03)
+## Vintage and schema (confirmed 2026-09-03)
+
+**The BigQuery mirror's last filings are dated 2020-12-31; its last complete
+10-K year is fiscal 2019.** A question about a later fiscal year returns no
+row here (honestly), and `ac.sec_fact_reconcile` then reports `single
+source` with the EDGAR API's value — the API is current.
+
 
 `submission`: `submission_number` (accession), `central_index_key`,
 `company_name`, `form`, `fiscal_year`, `fiscal_period_focus` (FY, Q1…),

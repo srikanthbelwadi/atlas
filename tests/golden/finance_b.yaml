@@ -1,9 +1,12 @@
 # Use case B — Filing-Grounded Fact-Check & Peer Benchmark (plan §3.4).
 # B4 (paragraph fact-check) runs through /skills/filing-fact-check.
+# Years pinned to the SEC mirror's vintage: its last 10-Ks are fiscal 2019 (filed
+# early 2020, confirmed 2026-09-03 via infra/finance/sec_vintage.sql). The EDGAR
+# API covers every year, so multi-year questions (B3) stay open-ended.
 pack: finance
 questions:
   - id: B1
-    q: "What was JPMorgan's net income for fiscal 2025 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?"
+    q: "What was JPMorgan's net income for fiscal 2019 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?"
     expect: {path: attested, source_id: ac.sec_fact_reconcile, rows_include_source: reconciliation}
   - id: B2
     q: "Compare return on assets for the five largest US banks by deposits, using the latest FDIC figures."
@@ -13,10 +16,10 @@ questions:
     expect: {path: attested, source_id_in: [ac.sec_edgar_company_metric_by_year, ac.sec_fact_annual_api]}
   - id: B4
     skill: filing-fact-check
-    text: "Bank of America grew deposits 6% in 2025 while its net income reached $27.1 billion and its efficiency ratio fell below 60%."
-    expect: {kind: verdict_table, claims_min: 2, verdicts_include: [not_verifiable]}
+    text: "JPMorgan grew deposits 6% in 2019 while its net income reached $36.4 billion, total assets stood at $2.69 trillion and its return on assets was 1.33%."
+    expect: {kind: verdict_table, claims_min: 3, verdicts_include: [verified, not_verifiable]}
   - id: B5
-    q: "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2025?"
+    q: "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2019?"
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.sec_quarterly_financials, max_bytes_gb: 10}
   - id: B6
     q: "What was Lehman Brothers' revenue in 2024?"

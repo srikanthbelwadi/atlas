@@ -26,13 +26,13 @@ export const FINANCE_EXAMPLES: ExampleGroup[] = [
   {
     label: "Filings & peers",
     questions: [
-      "What was JPMorgan's net income for fiscal 2025 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?",
+      "What was JPMorgan's net income for fiscal 2019 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?",
       "Compare return on assets for the five largest US banks by deposits, using the latest FDIC figures.",
       "Revenue for Apple, Microsoft and Nvidia over the last five fiscal years.",
-      "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2025?",
+      "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2019?",
     ],
   },
 ];
 
 export const FACT_CHECK_EXAMPLE =
-  "Bank of America grew deposits 6% in 2025 while its net income reached $27.1 billion and its efficiency ratio fell below 60%.";
+  "JPMorgan grew deposits 6% in 2019 while its net income reached $36.4 billion, total assets stood at $2.69 trillion and its return on assets was 1.33%.";

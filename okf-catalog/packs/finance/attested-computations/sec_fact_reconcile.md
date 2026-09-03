@@ -67,4 +67,6 @@ copy. Each step runs through its own executor and guardrails and shows up
 as its own entry in the walkthrough; the combine step adds one
 `reconciliation` row with `delta_pct` and `agreement` (`agree`, `differ`,
 `single source`, `no data`). A missing source is a visible finding, not a
-silent fallback.
+silent fallback. Note the BigQuery mirror ends with fiscal 2019, so a
+two-source agreement is only possible for fiscal 2019 and earlier; later
+years reconcile as `single source` (EDGAR API).

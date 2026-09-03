@@ -33,6 +33,12 @@ source:
   stands_in_for: fundamentals warehouse / financial-close output
 ---
 
+## Vintage
+
+The mirror stops at filings dated 2020-12-31: fiscal 2019 is the last
+complete 10-K year (325k filings, 59.6k 10-Ks in total). For anything later
+use the SEC EDGAR API templates, which are current.
+
 ## Notes for query planning
 
 - Prefer `ac.sec_fact_from_bq` for any single-company annual figure: the

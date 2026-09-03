@@ -7,7 +7,7 @@
 SELECT 'cfpb_name_missing' AS check_name, x.display_name, x.cfpb_company_name AS seed_value, NULL AS suggestion
 FROM `atlas-ard-okf.finance_pack.entity_xref` x
 LEFT JOIN (SELECT DISTINCT company_name FROM `bigquery-public-data.cfpb_complaints.complaint_database`
-           WHERE date_received >= '2023-01-01') c
+           WHERE date_received >= '2021-01-01') c
   ON c.company_name = x.cfpb_company_name
 WHERE x.cfpb_company_name IS NOT NULL AND c.company_name IS NULL
 UNION ALL
@@ -19,10 +19,10 @@ LEFT JOIN `bigquery-public-data.fdic_banks.institutions` i
 WHERE x.fdic_cert IS NOT NULL AND i.fdic_certificate_number IS NULL;
 
 
--- Suggestions: the top CFPB respondents since 2023 (to find the exact strings)
+-- Suggestions: the top CFPB respondents since 2021 (to find the exact strings)
 SELECT company_name, COUNT(*) AS complaints
 FROM `bigquery-public-data.cfpb_complaints.complaint_database`
-WHERE date_received >= '2023-01-01'
+WHERE date_received >= '2021-01-01'
 GROUP BY company_name ORDER BY complaints DESC LIMIT 60;
 
 -- Suggestions: the 40 largest active FDIC banks by deposits (to find cert numbers)
