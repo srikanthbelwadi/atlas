@@ -72,9 +72,14 @@ export default function FinanceHome() {
               Public datasets standing in for a bank&apos;s complaint system, entity master and fundamentals mart — every
               attested answer carries a receipt.
             </span>
-            <Link href="/finance/catalog" className="nav-link" style={{ marginLeft: "auto" }}>
-              Sources & templates →
-            </Link>
+            <span style={{ marginLeft: "auto", display: "flex", gap: 14 }}>
+              <Link href="/finance/catalog" className="nav-link">
+                Sources & templates →
+              </Link>
+              <Link href="/finance/implementation" className="nav-link">
+                How it&apos;s built →
+              </Link>
+            </span>
           </div>
 
           <div className="segmented" role="group" aria-label="Mode">

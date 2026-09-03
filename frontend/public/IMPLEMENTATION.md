@@ -311,8 +311,11 @@ and BigQuery paths share). Attested answers carry a **receipt** (template
 version, reviewer, `stale_after`, every query step, bytes, tokens, cost),
 and `POST /skills/filing-fact-check` verifies each numeric claim in a
 paragraph through attested computations only. The engineering design is at
-`/finance/design`; the demo plan is `atlas-finance-demo-plan.md` in the
-project folder.
+`/finance/design`; the as-built implementation document (catalog inventory,
+executors, golden results, operations, skills index and the internal-data
+recommendation) is `FINANCE-IMPLEMENTATION.md` (also `/finance/implementation`);
+agent skills live in `skills/finance/`; the demo plan is
+`atlas-finance-demo-plan.md` in the project folder.
 
 ## 9. References
 

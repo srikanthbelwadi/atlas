@@ -41,7 +41,7 @@ See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/O
 - [x] Firebase App Hosting backend `atlas-web` created via `firebase apphosting:backends:create`, connected to `srikanthbelwadi/atlas`'s `main` branch (nodejs22 runtime), first rollout triggered — live at `https://atlas-web--atlas-ard-okf.us-central1.hosted.app` once the rollout finishes; that hostname is added to Firebase Auth's authorized domains so Google sign-in works there
 - [x] `on_user_created` Cloud Function (`infra/functions/on_user_created`) — emails `ATLAS_ADMIN_EMAILS` when a new `users/{uid}` doc lands as `status: pending`; deploy steps in `infra/README.md`
 - [x] Cloud Scheduler job for the weekly crawler re-run — command in `infra/README.md`
-- [x] Finance pack (`/finance`): pack-isolated catalog, 12 attested computations, receipts, fact-check; golden sets pass 22/22 (see `IMPLEMENTATION.md` §8 and `tests/golden/`)
+- [x] Finance pack (`/finance`): pack-isolated catalog, 12 attested computations, receipts, fact-check; golden sets pass 22/22 (see `FINANCE-IMPLEMENTATION.md`, `skills/finance/` and `tests/golden/`)
 - [ ] Workload Identity Federation for CI/CD (see "Still to design/build" in `infra/README.md`)
 
 **No Vercel anywhere in this stack.** The frontend is a standard Next.js app, which is what Vercel is best known for hosting, but it deploys to **Firebase App Hosting** (which runs it on Cloud Run under the hood) — nothing in `frontend/` references Vercel, and `apphosting.yaml` is Firebase's own config format, not Vercel's.
