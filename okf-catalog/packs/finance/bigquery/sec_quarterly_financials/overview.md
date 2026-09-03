@@ -51,7 +51,7 @@ use the SEC EDGAR API templates, which are current.
   selection rule (10-K, `number_of_quarters = 4` for flows or `0` for
   instants, `num_dimensions = 0`, latest `date_filed` per fiscal year) is
   easy to get subtly wrong.
-- Screening recipe (ad-hoc): `SELECT s.company_name, s.sic, n.period_end_date, n.value
+- Screening questions route to `ac.sec_filer_screen` (reviewed). If a screen falls outside its parameters, the ad-hoc recipe: `SELECT s.company_name, s.sic, n.period_end_date, n.value
   FROM numbers n JOIN submission s USING (submission_number) WHERE s.sic = '6022'
   AND n.measure_tag = 'NetIncomeLoss' AND n.number_of_quarters = 1 AND n.num_dimensions = 0
   AND n.period_end_date BETWEEN 20190101 AND 20191231 AND n.value < 0` — quarterly

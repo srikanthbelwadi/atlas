@@ -20,7 +20,7 @@ questions:
     expect: {kind: verdict_table, claims_min: 3, verdicts_include: [verified, not_verifiable]}
   - id: B5
     q: "According to their SEC 10-Q filings, which state commercial banks (SIC code 6022) reported a quarterly net loss in 2019?"
-    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.sec_quarterly_financials, max_bytes_gb: 10}
+    expect: {path: attested, source_id: ac.sec_filer_screen, params_include: {sic_code: "6022", fiscal_year: 2019}}
   - id: B6
     q: "What was Lehman Brothers' revenue in 2024?"
     expect: {path: refusal}
