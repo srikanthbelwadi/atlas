@@ -45,7 +45,7 @@ SELECT doc_id, JSON_TYPE(metadata) AS metadata_type
 FROM \`${PROJECT}.ard_catalog.embeddings\`
 WHERE doc_id LIKE '%#finance' ORDER BY doc_id"
 echo "-- SEC numbers/submission columns as crawled (for ac.sec_fact_from_bq promotion):"
-for t in submission numbers; do echo "-- schema: sec_quarterly_financials.$t"; bq show --schema --format=prettyjson "bigquery-public-data:sec_quarterly_financials.$t" | python3 -c 'import json,sys; print(", ".join(f"{c[\"name\"]} ({c[\"type\"]})" for c in json.load(sys.stdin)))'; done
+for t in submission numbers; do echo "-- schema: sec_quarterly_financials.$t"; bq show --schema --format=prettyjson "bigquery-public-data:sec_quarterly_financials.$t" | python3 -c "import json,sys; print(', '.join(c['name']+' ('+c['type']+')' for c in json.load(sys.stdin)))"; done
 echo "-- crosswalk check (empty = every seed row resolves):"
 bq query --use_legacy_sql=false --format=pretty < infra/finance/xref_check.sql || true
 

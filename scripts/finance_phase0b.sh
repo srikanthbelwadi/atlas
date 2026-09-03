@@ -15,11 +15,11 @@ echo "== 1. SEC schemas and metadata encoding"
 for t in submission numbers; do
   echo "-- bigquery-public-data.sec_quarterly_financials.$t"
   bq show --schema --format=prettyjson "bigquery-public-data:sec_quarterly_financials.$t" \
-    | python3 -c 'import json,sys; print(", ".join(f"{c[\"name\"]} ({c[\"type\"]})" for c in json.load(sys.stdin)))'
+    | python3 -c "import json,sys; print(', '.join(c['name']+' ('+c['type']+')' for c in json.load(sys.stdin)))"
 done
 echo "-- fdic_banks.institutions: first 20 columns"
 bq show --schema --format=prettyjson "bigquery-public-data:fdic_banks.institutions" \
-  | python3 -c 'import json,sys; print(", ".join(f"{c[\"name\"]} ({c[\"type\"]})" for c in json.load(sys.stdin)[:20]))'
+  | python3 -c "import json,sys; print(', '.join(c['name']+' ('+c['type']+')' for c in json.load(sys.stdin)[:20]))"
 bq query --use_legacy_sql=false --format=pretty "
 SELECT JSON_TYPE(metadata) AS metadata_type, COUNTIF(doc_id LIKE '%#finance') AS finance_rows, COUNT(*) AS rows
 FROM \`${PROJECT}.ard_catalog.embeddings\` GROUP BY 1"
