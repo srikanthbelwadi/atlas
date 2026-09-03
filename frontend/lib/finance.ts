@@ -16,18 +16,18 @@ export const FINANCE_EXAMPLES: ExampleGroup[] = [
   {
     label: "Complaints & conduct",
     questions: [
-      "Which five products had the largest year-over-year increase in complaints in 2025, and what share of each was disputed?",
-      "What is Wells Fargo's timely-response rate on mortgage complaints by quarter since 2023, versus the top-10 banks by deposits?",
-      "Complaints per $1B of deposits for the ten largest banks in 2025.",
-      "What are the main themes in narratives about credit-reporting disputes filed in Q1 2026, with three representative quotes each?",
-      "Did older-American-tagged complaints about debt collection get resolved with relief less often than untagged ones in 2025?",
+      "Which five products had the largest year-over-year increase in complaints in 2022, and what share of each was answered on time?",
+      "What is Wells Fargo's timely-response rate on mortgage complaints by quarter since 2021, versus the top-10 banks by deposits?",
+      "Complaints per $1B of deposits for the ten largest banks in 2022.",
+      "What are the main themes in narratives about credit-reporting disputes filed in Q1 2022, with three representative quotes each?",
+      "Did older-American-tagged complaints about debt collection get resolved with relief less often than untagged ones in 2022?",
     ],
   },
   {
     label: "Filings & peers",
     questions: [
       "What was JPMorgan's net income for fiscal 2025 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?",
-      "Compare return on assets for the five largest US banks by deposits in 2025, using FDIC figures.",
+      "Compare return on assets for the five largest US banks by deposits, using the latest FDIC figures.",
       "Revenue for Apple, Microsoft and Nvidia over the last five fiscal years.",
       "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2025?",
     ],

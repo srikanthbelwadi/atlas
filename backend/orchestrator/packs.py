@@ -45,9 +45,10 @@ PACKS: dict[str, dict] = {
             "crosswalk; never free-text match a bank name in ad-hoc SQL when a template exists.\n"
             "- Narrative (free-text complaint) questions must use the narrative-themes template; "
             "never draft ad-hoc SQL that selects consumer_complaint_narrative.\n"
-            "- Date windows: when a question names no dates for complaint narratives, use "
-            "date_from='2023-01-01' and date_to='2026-06-30' (public narratives stopped being "
-            "published in August 2026).\n\n"
+            "- Data vintage: the CFPB complaint mirror ends 2023-03-23 and the FDIC snapshot is "
+            "late 2022. 'Latest year' means 2022. When a question names no dates for complaints, "
+            "use date_from='2021-01-01' and date_to='2023-03-31'. A question about 2024 or later "
+            "cannot be answered from these tables — choose no candidate rather than invent one.\n\n"
         ),
         "synthesis_rules": (
             "\n\nFinance-pack rule: the first sentence of the narrative must name the metric "

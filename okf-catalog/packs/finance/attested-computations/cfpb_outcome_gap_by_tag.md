@@ -38,7 +38,7 @@ computation:
       - name: year
         type: INT64
         required: true
-        description: Calendar year of date_received.
+        description: Calendar year of date_received, e.g. 2022 (latest full year in the BigQuery mirror).
       - name: product
         type: STRING
         required: false

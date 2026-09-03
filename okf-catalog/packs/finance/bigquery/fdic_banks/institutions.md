@@ -45,7 +45,9 @@ source:
 
 ## What's in this table
 
-Every institution the FDIC has ever insured. Filter `active = TRUE` for the
+Every institution the FDIC has ever insured. The BigQuery mirror's vintage
+appears to be late 2022 (e.g. Flagstar Bank, FSB is still listed as active),
+so 'current' figures are as of that snapshot; the answer should say so. Filter `active = TRUE` for the
 current population (about 4,500 banks). Dollar columns are in **thousands
 of USD** as in the FDIC source (`total_deposits * 1000` is dollars).
 

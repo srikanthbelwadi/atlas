@@ -1,21 +1,23 @@
 # Use case A — Complaint & Conduct Intelligence (atlas-finance-demo-plan.md §2.4)
+# Years pinned to the BigQuery mirror's vintage: CFPB ends 2023-03-23, so 2022 is
+# the latest full year (confirmed 2026-09-03, infra/finance/xref_lookup.sql).
 pack: finance
 questions:
   - id: A1
-    q: "Which five products had the largest year-over-year increase in complaints in 2025, and what share of each was disputed?"
+    q: "Which five products had the largest year-over-year increase in complaints in 2022, and what share of each was answered on time?"
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.cfpb_complaints, max_bytes_gb: 10}
   - id: A2
-    q: "What is Wells Fargo's timely-response rate on mortgage complaints by quarter since 2023, versus the top-10 banks by deposits?"
+    q: "What is Wells Fargo's timely-response rate on mortgage complaints by quarter since 2021, versus the top-10 banks by deposits?"
     expect: {path: attested, source_id: ac.cfpb_timely_response_rate, params_include: {company: "Wells Fargo"}}
   - id: A3
-    q: "Complaints per $1B of deposits for the ten largest banks in 2025."
-    expect: {path: attested, source_id: ac.cfpb_complaint_rate_per_deposits, params_include: {year: 2025}}
+    q: "Complaints per $1B of deposits for the ten largest banks in 2022."
+    expect: {path: attested, source_id: ac.cfpb_complaint_rate_per_deposits, params_include: {year: 2022}}
   - id: A4
-    q: "What are the main themes in narratives about credit-reporting disputes filed in Q1 2026, with three representative quotes each?"
+    q: "What are the main themes in narratives about credit-reporting disputes filed in Q1 2022, with three representative quotes each?"
     expect: {path: attested, source_id: ac.cfpb_narrative_themes, verified_quotes_min: 1, receipt: true}
   - id: A5
-    q: "Did older-American-tagged complaints about debt collection get resolved with relief less often than untagged ones in 2025?"
-    expect: {path: attested, source_id: ac.cfpb_outcome_gap_by_tag, params_include: {tag: "Older American", year: 2025}}
+    q: "Did older-American-tagged complaints about debt collection get resolved with relief less often than untagged ones in 2022?"
+    expect: {path: attested, source_id: ac.cfpb_outcome_gap_by_tag, params_include: {tag: "Older American", year: 2022}}
   - id: A6
     q: "Show me the complaint trend for Zorblax Savings & Loan in 2027."
     expect: {path: refusal}

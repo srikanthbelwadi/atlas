@@ -44,13 +44,13 @@ computation:
       - name: date_from
         type: DATE
         required: false
-        default: "2023-01-01"
-        description: Start of the window (inclusive). Default 2023-01-01.
+        default: "2021-01-01"
+        description: Start of the window (inclusive). Default 2021-01-01.
       - name: date_to
         type: DATE
         required: false
-        default: "2026-06-30"
-        description: End of the window (inclusive). Default 2026-06-30 (public narratives stop being published after August 2026).
+        default: "2023-03-31"
+        description: End of the window (inclusive). Default 2023-03-31 (the BigQuery mirror ends 2023-03-23).
       - name: sample_n
         type: INT64
         required: false
@@ -98,5 +98,6 @@ template bounds both:
 ## Limits
 
 Themes describe a sample, not the population; the answer says the sample
-size. Narrative coverage after mid-2026 is thin (CFPB stopped publishing
-new narratives in August 2026), so windows default to end 2026-06-30.
+size. The BigQuery mirror of the complaint database ends on 2023-03-23 (its
+daily pipeline stopped), so windows default to 2021-01-01 – 2023-03-31 and
+the answer names the window.

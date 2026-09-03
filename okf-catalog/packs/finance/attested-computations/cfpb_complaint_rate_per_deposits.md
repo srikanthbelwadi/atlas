@@ -46,7 +46,7 @@ computation:
       - name: year
         type: INT64
         required: true
-        description: Calendar year of date_received, e.g. 2025.
+        description: Calendar year of date_received, e.g. 2022 (the BigQuery mirror ends March 2023, so 2022 is the latest full year).
       - name: top_n
         type: INT64
         required: false

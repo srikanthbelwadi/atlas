@@ -48,9 +48,12 @@ source:
 
 ## What's in this table
 
-Roughly ten million complaints (the CFPB received about 6.6 million in 2025
-alone). About 3.8 million rows carry `consumer_complaint_narrative`, only
-where `consumer_consent_provided = 'Consent provided'`.
+**Vintage (confirmed 2026-09-03): the BigQuery mirror holds 3.46 million
+complaints from 2011-12-01 to 2023-03-23 and has not refreshed since** —
+its public pipeline stopped. 1.25 million rows carry
+`consumer_complaint_narrative` (only where `consumer_consent_provided =
+'Consent provided'`). Treat 2022 as the latest full year; a question about
+2024 or later has no data here and should be answered honestly as such.
 
 Key semantics:
 
@@ -77,6 +80,6 @@ Key semantics:
 - Never select `consumer_complaint_narrative` in ad-hoc SQL. Narrative
   questions route to `ac.cfpb_narrative_themes`, which samples under a hard
   row limit and verifies every quote.
-- On 14 August 2026 the CFPB announced it would stop publishing new
-  complaint narratives. Existing narratives remain; treat narrative
-  coverage after mid-2026 as thin and say so.
+- The mirror ends 2023-03-23; default windows are 2021-01-01 to
+  2023-03-31. (Separately, the CFPB stopped publishing new narratives in
+  August 2026, which matters only if a fresher extract is loaded.)

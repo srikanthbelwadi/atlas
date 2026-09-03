@@ -42,11 +42,11 @@ computation:
       - name: date_from
         type: DATE
         required: true
-        description: Start of the window (inclusive), ISO date, e.g. "2024-01-01". If the question says "since 2023" use "2023-01-01".
+        description: Start of the window (inclusive), ISO date, e.g. "2021-01-01". If the question says "since 2021" use "2021-01-01".
       - name: date_to
         type: DATE
         required: true
-        description: End of the window (inclusive), ISO date. If the question names only a start, use "2026-08-31".
+        description: End of the window (inclusive), ISO date. If the question names only a start, use "2023-03-31".
       - name: grain
         type: STRING
         required: false

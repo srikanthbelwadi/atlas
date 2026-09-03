@@ -6,7 +6,7 @@ questions:
     q: "What was JPMorgan's net income for fiscal 2025 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?"
     expect: {path: attested, source_id: ac.sec_fact_reconcile, rows_include_source: reconciliation}
   - id: B2
-    q: "Compare return on assets for the five largest US banks by deposits in 2025, using FDIC figures."
+    q: "Compare return on assets for the five largest US banks by deposits, using the latest FDIC figures."
     expect: {path: attested, source_id: ac.fdic_peer_ratios, params_include: {top_n: 5}}
   - id: B3
     q: "Revenue for Apple, Microsoft and Nvidia over the last five fiscal years."

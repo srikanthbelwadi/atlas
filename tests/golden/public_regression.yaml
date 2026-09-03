@@ -23,5 +23,5 @@ questions:
   - q: "What was Google's revenue in 2023?"
     expect: {path: attested, source_id: ac.sec_edgar_company_metric_by_year}
   # Must NOT be answerable from the public pack even after the finance crawl:
-  - q: "Which five products had the largest year-over-year increase in CFPB complaints in 2025?"
+  - q: "Which five products had the largest year-over-year increase in CFPB complaints in 2022?"
     expect: {path: refusal_or_no_finance_source, forbidden_source_prefix: bq.bigquery-public-data.cfpb_complaints}

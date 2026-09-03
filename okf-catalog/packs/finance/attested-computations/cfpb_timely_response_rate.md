@@ -59,13 +59,13 @@ computation:
       - name: date_from
         type: DATE
         required: false
-        default: "2023-01-01"
-        description: Start of the window (inclusive). Default 2023-01-01.
+        default: "2021-01-01"
+        description: Start of the window (inclusive). Default 2021-01-01.
       - name: date_to
         type: DATE
         required: false
-        default: "2026-08-31"
-        description: End of the window (inclusive). Default 2026-08-31.
+        default: "2023-03-31"
+        description: End of the window (inclusive). Default 2023-03-31 (end of the BigQuery mirror).
     sql: |
       WITH xref AS (
         SELECT display_name, cfpb_company_name, fdic_cert
