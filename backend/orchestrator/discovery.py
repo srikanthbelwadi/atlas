@@ -28,7 +28,7 @@ import os
 
 from google.cloud import bigquery
 
-from . import llm
+from . import llm, packs
 from ..accessor import okf_loader
 from ..accessor.okf_loader import DEFAULT_PACK
 
@@ -157,7 +157,8 @@ def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
     catalog and the hand-authored OKF catalog for one pack, deduplicated by
     source_id."""
     question_embedding = llm.embed(question)
-    candidates = _search_bq_catalog(question_embedding, TOP_K, pack) + _search_okf_catalog(question_embedding, TOP_K, pack)
+    k = packs.top_k(pack, TOP_K)
+    candidates = _search_bq_catalog(question_embedding, k, pack) + _search_okf_catalog(question_embedding, k, pack)
 
     seen = {}
     for c in candidates:
@@ -166,4 +167,4 @@ def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
             seen[c["source_id"]] = c
 
     ranked = sorted(seen.values(), key=lambda c: c["score"], reverse=True)
-    return ranked[:TOP_K]
+    return ranked[:k]

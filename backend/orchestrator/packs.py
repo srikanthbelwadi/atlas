@@ -25,6 +25,10 @@ PACKS: dict[str, dict] = {
     },
     "finance": {
         "title": "Finance pack",
+        # The finance catalog is ~40 sources with many near-synonyms (three
+        # FDIC/CFPB bank templates score alike on any "bank" question), so
+        # discovery keeps two more candidates than the public pack's six.
+        "top_k": 8,
         "tagline": (
             "Public datasets standing in for a bank's complaint system, entity master "
             "and fundamentals mart — every answer carries a receipt."
@@ -85,6 +89,10 @@ def glossary(pack: str) -> str:
 
 def synthesis_rules(pack: str) -> str:
     return PACKS.get(pack, {}).get("synthesis_rules", "")
+
+
+def top_k(pack: str, default: int) -> int:
+    return int(PACKS.get(pack, {}).get("top_k") or default)
 
 
 def info(pack: str) -> dict:

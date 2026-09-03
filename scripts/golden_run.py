@@ -43,7 +43,7 @@ def stream(base, path, token, body):
                 try:
                     payload = json.loads("\n".join(data) or "{}")
                 except json.JSONDecodeError:
-                    payload = {}
+                    payload = {"_raw": "\n".join(data)[:500]}
                 yield event, payload
                 if event in ("answer", "error"):
                     return
@@ -116,7 +116,10 @@ def check(expect, events):
         missing = set(expect["verdicts_include"]) - verdicts
         if missing:
             failures.append(f"verdicts missing {missing}")
-    verdict_rows = [p for e, p in events if e == "claim.verdict"]
+    verdict_rows = [p for e, p in events if e == "claim.verdict" and isinstance(p, dict) and p.get("verdict")]
+    unparsed = sum(1 for e, p in events if e == "claim.verdict" and not (isinstance(p, dict) and p.get("verdict")))
+    if unparsed:
+        failures.append(f"{unparsed} claim.verdict event(s) could not be parsed by the runner")
     cost = (wt.get("cost") or {}).get("total_cost_usd")
     bytes_total = sum(q.get("bytes_billed", 0) for q in queries)
     return failures, {"source": used, "bytes_gb": round(bytes_total / 1024**3, 3), "cost_usd": cost, "elapsed_s": wt.get("elapsed_s"),

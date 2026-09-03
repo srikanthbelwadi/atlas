@@ -2,12 +2,18 @@
 id: bq.bigquery-public-data.sec_quarterly_financials.numbers#finance
 type: Table
 pack: finance
-title: SEC financial statement data sets (XBRL numbers and submissions)
+title: SEC filings — every 10-K/10-Q figure by filer, SIC code and quarter (XBRL data sets)
 description: >
   BigQuery dataset `bigquery-public-data.sec_quarterly_financials`, a mirror
   of the SEC's Financial Statement Data Sets: every numeric XBRL fact from
-  10-K and 10-Q filings (`numbers`), one row per filing (`submission`), the
-  tag dictionary (`measure_tag`) and SIC codes. In the finance pack this
+  every 10-K and 10-Q filing (`numbers`: net income, revenue, assets,
+  deposits, loans… per filer per quarter or year), one row per filing with
+  the filer's SIC code (`submission`), the tag dictionary (`measure_tag`)
+  and SIC code names. The place to SCREEN filers: which companies or banks
+  (SIC 6021 national commercial banks, 6022 state commercial banks, 6029
+  other commercial banks, 6035/6036 savings institutions) reported a net
+  loss, a fall in revenue, negative equity, or any figure above or below a
+  threshold in a given quarter or fiscal year. In the finance pack this
   stands in for a fundamentals data warehouse or the output of the
   financial close. Column names below are as crawled (they differ from the
   SEC's own file layout).
@@ -23,7 +29,7 @@ reviewed_on: 2026-09-03
 stale_after: 2027-03-01
 lifecycle: active
 version: "1"
-tags: [sec, xbrl, filings, 10-k, fundamentals, financial-statements, finance]
+tags: [sec, xbrl, filings, filers, 10-k, 10-q, quarterly, sic-code, screening, net-loss, net-income, fundamentals, financial-statements, banks, finance]
 source:
   kind: bigquery
   project: bigquery-public-data
