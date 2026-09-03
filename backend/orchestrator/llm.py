@@ -1,7 +1,7 @@
 """
 Vertex AI Gemini wrapper.
 
-Replaces Resource Raiser's provider-agnostic llm.py (OpenAI / Gemini API key /
+Replaces NeuralKG's provider-agnostic llm.py (OpenAI / Gemini API key /
 Azure OpenAI) with a single, direct Vertex AI integration authenticated by the
 Cloud Run service account — no API keys anywhere in this codebase.
 

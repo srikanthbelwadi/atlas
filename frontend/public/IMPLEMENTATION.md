@@ -27,10 +27,10 @@ Nothing in the design depends on the data being public.
 
 ## 2. Where it came from
 
-Atlas is a derivative of [Resource Raiser](https://github.com/TechSoup/resource-raiser)
-(TechSoup, Apache-2.0), a general-purpose agentic query engine over ~20 US
+Atlas is a derivative of [NeuralKG](https://github.com/rvguha/Neuralkg)
+(Apache-2.0), a general-purpose agentic query engine over ~20 US
 authoritative sources (SEC, Census, Treasury, IRS Form 990, CDC, federal
-grants). Resource Raiser's central idea — describe each data source once in
+grants). NeuralKG's central idea — describe each data source once in
 the [Open Knowledge Format](https://okf.md/spec/) (OKF), make it discoverable
 through an [Agentic Resource Discovery](https://agenticresourcediscovery.org/spec/)
 (ARD) index, and run every question through the same
@@ -39,15 +39,15 @@ per-source query code — is the foundation this project keeps.
 
 What changed, and why:
 
-| Kept from Resource Raiser | Replaced or newly built for Atlas |
+| Kept from NeuralKG | Replaced or newly built for Atlas |
 |---|---|
-| The five-stage discover/plan/fetch/check/synthesize pipeline shape | A guarded BigQuery executor as the first-class execution path for large tabular stores, alongside OKF-described APIs — the demo catalog is a curated set of BigQuery datasets plus the SEC EDGAR API, not Resource Raiser's original ~20 REST sources |
+| The five-stage discover/plan/fetch/check/synthesize pipeline shape | A guarded BigQuery executor as the first-class execution path for large tabular stores, alongside OKF-described APIs — the demo catalog is a curated set of BigQuery datasets plus the SEC EDGAR API, not NeuralKG's original ~20 REST sources |
 | Describing sources once via OKF documents, never per-source code | A guarded BigQuery executor (dry-run byte cap + hard `maximum_bytes_billed` + wall-clock timeout) as the primary fetch path, replacing the generic REST accessor as the default |
 | The "plan" stage validating whether a source can structurally answer a question before fetching | Vertex AI Gemini under strict JSON-schema output for both planning and synthesis, on Google Cloud infrastructure |
-| Citations with a provenance/trust label on every answer | A live SSE trace of every stage as it runs, plus a persisted post-hoc "walkthrough" (sources considered, queries run, backtracks, real token cost) — Resource Raiser's original UI showed only a finished answer |
+| Citations with a provenance/trust label on every answer | A live SSE trace of every stage as it runs, plus a persisted post-hoc "walkthrough" (sources considered, queries run, backtracks, real token cost) — NeuralKG's original UI showed only a finished answer |
 | — | Firebase-Auth-gated access control: admin approval queue, pre-approved-email allowlist, per-user monthly budget guardrail in Firestore |
 | — | A scheduled crawler that builds the ARD/OKF discovery index directly from a store's own schema metadata (BigQuery `INFORMATION_SCHEMA` today), so table descriptions can't hallucinate what a table contains |
-| — | Entirely new Next.js frontend — none of Resource Raiser's original frontend code is reused |
+| — | Entirely new Next.js frontend — none of NeuralKG's original frontend code is reused |
 
 ## 3. Tech stack
 
@@ -83,7 +83,7 @@ Registry + Cloud Build (container images).
 `backend/orchestrator/pipeline.py`'s `run()` is an async generator; every
 stage yields one or more `{"event": "<stage>.<phase>", "data": {...}}`
 dicts consumed directly by `main.py`'s `EventSourceResponse` and rendered
-live by the frontend's `TracePanel`. The same five stages Resource Raiser
+live by the frontend's `TracePanel`. The same five stages NeuralKG
 used, with BigQuery as the first-class executor for large tabular stores
 and OKF-described APIs as the second:
 
@@ -318,4 +318,4 @@ project folder.
 
 - **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** spec, [repository](https://github.com/ards-project/ard-spec).
 - **[Open Knowledge Format (OKF)](https://okf.md/spec/)** spec, [reference tooling](https://github.com/GoogleCloudPlatform/knowledge-catalog), [v0.2 trust-signals announcement](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
-- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** (TechSoup, Apache-2.0) — the pipeline this project forks.
+- **[NeuralKG](https://github.com/rvguha/Neuralkg)** (Apache-2.0) — the pipeline this project forks.

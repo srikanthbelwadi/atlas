@@ -10,7 +10,7 @@ Two sources of candidates, merged:
      BigQuery's native VECTOR_SEARCH — no separate vector DB to run.
 
   2. Hand-authored OKF docs living in `okf-catalog/` (curated Attested
-     Computations, and Resource Raiser's original non-BQ sources ported to
+     Computations, and NeuralKG's original non-BQ sources ported to
      OKF) — small enough to embed and rank in-process without a round trip.
 
 Both paths return the same shape so `pipeline.py` doesn't care which kind of

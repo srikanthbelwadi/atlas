@@ -1,8 +1,8 @@
 # Third-Party Notices
 
-This repository is a derivative work of [Resource Raiser](https://github.com/TechSoup/resource-raiser)
-by TechSoup, used and extended under the terms of the Apache License,
-Version 2.0. Resource Raiser's own discover → plan → fetch → check →
+This repository is a derivative work of [NeuralKG](https://github.com/rvguha/Neuralkg)
+used and extended under the terms of the Apache License,
+Version 2.0. NeuralKG's own discover → plan → fetch → check →
 synthesize pipeline shape, and its approach of describing data sources
 once via the Open Knowledge Format instead of writing source-specific query
 code, are the foundation this project (Atlas) builds on — see
@@ -11,12 +11,12 @@ replaced or added, for a natural-language front door to public BigQuery
 datasets specifically.
 
 Per Apache License 2.0 §4(b) and §4(d), this file carries the required
-notice that this is a modified work, and retains Resource Raiser's original
+notice that this is a modified work, and retains NeuralKG's original
 copyright and license notice below.
 
 ---
 
-Copyright TechSoup
+Copyright the NeuralKG project (https://github.com/rvguha/Neuralkg)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ limitations under the License.
 
 Summarized here per §4(b); see `IMPLEMENTATION.md` for full technical detail.
 
-- Narrowed scope from Resource Raiser's ~20 general-purpose US authoritative
+- Narrowed scope from NeuralKG's ~20 general-purpose US authoritative
   sources (SEC, Census, Treasury, IRS Form 990, CDC, federal grants, plus a
   relational IRS 990 nonprofit grant graph) to public BigQuery datasets
   specifically, replacing its generic REST accessor as the primary path
@@ -45,7 +45,7 @@ Summarized here per §4(b); see `IMPLEMENTATION.md` for full technical detail.
   question" plan step's SQL/parameter drafting with Vertex AI Gemini calls
   running under strict JSON-schema-constrained output, deployed on Google
   Cloud (Cloud Run, Firebase App Hosting, Firestore) rather than
-  Resource Raiser's original hosting.
+  NeuralKG's original hosting.
 - Added a live SSE query trace (discover/plan/guardrail/fetch/check/
   synthesize events) streamed to the frontend as the pipeline runs, plus a
   post-hoc "walkthrough" (sources considered, queries executed, backtracks,
@@ -55,7 +55,7 @@ Summarized here per §4(b); see `IMPLEMENTATION.md` for full technical detail.
   budget guardrail, and a scheduled BigQuery-catalog crawler that builds
   the ARD/OKF-described discovery index used at query time.
 - New Next.js frontend (ask bar, live trace panel, adaptive answer canvas,
-  admin console) — none of Resource Raiser's original frontend code is
+  admin console) — none of NeuralKG's original frontend code is
   reused.
 
 ## Third-party specifications referenced (not vendored code)

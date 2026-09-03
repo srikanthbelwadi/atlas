@@ -1,7 +1,7 @@
 """
 The Atlas pipeline: discover -> plan -> fetch -> check -> synthesize.
 
-This is Resource Raiser's own five-stage shape, kept deliberately, with two
+This is NeuralKG's own five-stage shape, kept deliberately, with two
 differences: `fetch` is guarded (byte cap + timeout, see guardrails.py) and
 every stage emits SSE trace events as it goes, so the frontend's live query
 trace (plan §03) can render the query's progress in real time rather than
@@ -377,7 +377,7 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
     """Dispatches to the right accessor based on candidate kind:
       - bigquery + AttestedComputation -> guarded templated SQL (trusted path)
       - bigquery + ad-hoc               -> guarded free-form SQL (byte-capped tighter)
-      - anything else (ported Resource Raiser sources) -> generic OKF fetch
+      - anything else (ported NeuralKG sources) -> generic OKF fetch
 
     Returns a dict of {rows, bytes_billed, sql, params, doc} — `sql`/`params`
     are what pipeline.run() puts in fetch.done and the walkthrough's
@@ -451,7 +451,7 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
                         "fiscal_year": params.get("fiscal_year"), "definition": result.get("definition")}
         return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
 
-    # Non-BigQuery source ported from Resource Raiser, described purely via OKF.
+    # Non-BigQuery source ported from NeuralKG, described purely via OKF.
     doc = okf_loader.load_by_id(candidate["source_id"])
     return {
         "rows": [{"note": "generic OKF fetch not yet wired", "doc_id": candidate["source_id"]}],

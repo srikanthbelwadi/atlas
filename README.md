@@ -4,7 +4,7 @@ A natural-language front door to large-scale data — any data store or API
 described once in [OKF](https://okf.md/spec/), discovered through
 [ARD](https://agenticresourcediscovery.org/spec/), answered by Gemini under
 hard cost guardrails, and grown from
-[Resource Raiser](https://github.com/TechSoup/resource-raiser)'s
+[NeuralKG](https://github.com/rvguha/Neuralkg)'s
 discover → plan → fetch → check → synthesize engine.
 
 The approach works for enterprise private warehouses, operational stores and
@@ -13,9 +13,9 @@ executor; the **demo instance** is pointed at a curated set of BigQuery
 datasets plus the SEC EDGAR API because they are large, real, and free to
 query without credentials — not because the design is limited to them.
 
-This repository is a derivative work of TechSoup's Resource Raiser (Apache License 2.0). Original copyright and license notices are retained in `THIRD_PARTY_NOTICES.md` as required by that license.
+This repository is a derivative work of NeuralKG (Apache License 2.0). Original copyright and license notices are retained in `THIRD_PARTY_NOTICES.md` as required by that license.
 
-See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/OKF catalog over BigQuery and API sources, life of a query end to end, cost guardrails, grounding/citation model, the live reasoning trace, and exactly what was kept vs. replaced vs. newly built relative to Resource Raiser.
+See `IMPLEMENTATION.md` for the full engineering design: architecture, the ARD/OKF catalog over BigQuery and API sources, life of a query end to end, cost guardrails, grounding/citation model, the live reasoning trace, and exactly what was kept vs. replaced vs. newly built relative to NeuralKG.
 
 ## Layout
 
@@ -74,5 +74,5 @@ API sources are added the way SEC EDGAR was: one OKF document plus one accessor 
 
 - **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** — the discovery-side specification `discovery.py`'s candidate resolution is modeled on: resources described once, indexed by a registry, and searched rather than manually wired up. Spec repository: [ards-project/ard-spec](https://github.com/ards-project/ard-spec).
 - **[Open Knowledge Format (OKF)](https://okf.md/spec/)** — the markdown-with-YAML-frontmatter format `okf-catalog/` is written in, including the three-tier trust model (`unverified` / `machine-confirmed` / `human-reviewed`) surfaced throughout the pipeline and UI. Reference tooling: [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog); announcement: [Google Cloud Blog](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
-- **[Resource Raiser](https://github.com/TechSoup/resource-raiser)** — the discover → plan → fetch → check → synthesize pipeline this project forks and extends with a guarded BigQuery executor and OKF-described API sources. See `THIRD_PARTY_NOTICES.md` for the Apache-2.0 notice and a summary of what changed.
-- **`IMPLEMENTATION.md`** — this project's own engineering documentation: architecture, tech stack, life of a query, cost/guardrail design, grounding and citations, the live reasoning trace, and a detailed fork-vs-new-work breakdown against Resource Raiser.
+- **[NeuralKG](https://github.com/rvguha/Neuralkg)** — the discover → plan → fetch → check → synthesize pipeline this project forks and extends with a guarded BigQuery executor and OKF-described API sources. See `THIRD_PARTY_NOTICES.md` for the Apache-2.0 notice and a summary of what changed.
+- **`IMPLEMENTATION.md`** — this project's own engineering documentation: architecture, tech stack, life of a query, cost/guardrail design, grounding and citations, the live reasoning trace, and a detailed fork-vs-new-work breakdown against NeuralKG.

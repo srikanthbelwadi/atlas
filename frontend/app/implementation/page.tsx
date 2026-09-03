@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 export const metadata = {
   title: "Atlas — Implementation",
   description:
-    "Engineering design: architecture, tech stack, cost guardrails, grounding, tracing, and what was kept vs. replaced from Resource Raiser.",
+    "Engineering design: architecture, tech stack, cost guardrails, grounding, tracing, and what was kept vs. replaced from NeuralKG.",
 };
 
 // Deliberately NOT wrapped in SignInGate — this is reference material meant

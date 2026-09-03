@@ -138,10 +138,6 @@ export default function SignInGate({ children }: { children: ReactNode }) {
               Read the full engineering writeup
             </Link>
             {" · "}
-            <a href="https://tsnlw.centralindia.cloudapp.azure.com/life-of-a-query" target="_blank" rel="noopener noreferrer" className="nav-link">
-              The Life of a Query
-            </a>
-            {" · "}
             <a href="https://agenticresourcediscovery.org/spec/" target="_blank" rel="noopener noreferrer" className="nav-link">
               ARD spec
             </a>
@@ -150,8 +146,8 @@ export default function SignInGate({ children }: { children: ReactNode }) {
               OKF spec
             </a>
             {" · "}
-            <a href="https://github.com/TechSoup/resource-raiser" target="_blank" rel="noopener noreferrer" className="nav-link">
-              Resource Raiser
+            <a href="https://github.com/rvguha/Neuralkg" target="_blank" rel="noopener noreferrer" className="nav-link">
+              NeuralKG
             </a>
             {" (forked & extended)"}
           </p>
