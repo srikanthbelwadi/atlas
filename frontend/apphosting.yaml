@@ -45,13 +45,13 @@ env:
     availability:
       - BUILD
       - RUNTIME
-  # Finance section (atlasdata.world/finance). Off by default: with it unset
-  # or "false" the /finance routes 404 and the header shows no link, so the
-  # public demo is unchanged. Flip to "true" only after the orchestrator is
-  # serving ATLAS_PACKS_ENABLED=public,finance and the finance crawl has run
-  # (scripts/finance_phase0.sh), then redeploy.
+  # Finance section (atlasdata.world/finance). "true" since 2026-09-03, after
+  # the finance-enabled orchestrator revision passed the golden sets
+  # (tests/golden/: public 10/10, finance_a 6/6, finance_b 6/6). Set back to
+  # "false" to hide the section again (the /finance routes 404 and the
+  # header link disappears) without touching the backend.
   - variable: NEXT_PUBLIC_ATLAS_FINANCE_ENABLED
-    value: "false"
+    value: "true"
     availability:
       - BUILD
       - RUNTIME
