@@ -45,3 +45,13 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  # Finance section (atlasdata.world/finance). Off by default: with it unset
+  # or "false" the /finance routes 404 and the header shows no link, so the
+  # public demo is unchanged. Flip to "true" only after the orchestrator is
+  # serving ATLAS_PACKS_ENABLED=public,finance and the finance crawl has run
+  # (scripts/finance_phase0.sh), then redeploy.
+  - variable: NEXT_PUBLIC_ATLAS_FINANCE_ENABLED
+    value: "false"
+    availability:
+      - BUILD
+      - RUNTIME

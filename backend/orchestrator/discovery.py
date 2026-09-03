@@ -15,6 +15,12 @@ Two sources of candidates, merged:
 
 Both paths return the same shape so `pipeline.py` doesn't care which kind of
 source it ends up planning against.
+
+Packs: `discover(question, pack)` only ever returns candidates from one pack.
+Crawled rows carry `metadata.pack` (rows written before packs existed have
+none and count as the public pack); hand-authored docs carry `pack:` in
+their frontmatter (missing = public). The public demo therefore sees exactly
+the catalog it saw before the finance pack was added.
 """
 import json
 import math
@@ -24,6 +30,7 @@ from google.cloud import bigquery
 
 from . import llm
 from ..accessor import okf_loader
+from ..accessor.okf_loader import DEFAULT_PACK
 
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "atlas-ard-okf")
 ARD_CATALOG_DATASET = os.environ.get("ATLAS_ARD_CATALOG_DATASET", "ard_catalog")
@@ -46,15 +53,18 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _search_bq_catalog(question_embedding: list[float], top_k: int) -> list[dict]:
-    """VECTOR_SEARCH over the crawler-maintained embeddings table. Returns []
-    gracefully if the table doesn't exist yet (fresh deploy, crawler hasn't
-    run) rather than failing discovery entirely."""
+def _search_bq_catalog(question_embedding: list[float], top_k: int, pack: str = DEFAULT_PACK) -> list[dict]:
+    """VECTOR_SEARCH over the crawler-maintained embeddings table, pre-filtered
+    to one pack (VECTOR_SEARCH accepts a filtered subquery as its base table;
+    at this catalog size the brute-force path it implies is well under a
+    second). Returns [] gracefully if the table doesn't exist yet (fresh
+    deploy, crawler hasn't run) rather than failing discovery entirely."""
     table = f"`{PROJECT_ID}.{ARD_CATALOG_DATASET}.embeddings`"
     sql = f"""
         SELECT base.doc_id, base.metadata, distance
         FROM VECTOR_SEARCH(
-            TABLE {table},
+            (SELECT doc_id, embedding, metadata FROM {table}
+             WHERE COALESCE(JSON_VALUE(metadata, '$.pack'), '{DEFAULT_PACK}') = @pack),
             'embedding',
             (SELECT @question_embedding AS embedding),
             top_k => @top_k,
@@ -65,6 +75,7 @@ def _search_bq_catalog(question_embedding: list[float], top_k: int) -> list[dict
         query_parameters=[
             bigquery.ArrayQueryParameter("question_embedding", "FLOAT64", question_embedding),
             bigquery.ScalarQueryParameter("top_k", "INT64", top_k),
+            bigquery.ScalarQueryParameter("pack", "STRING", pack),
         ]
     )
     try:
@@ -83,20 +94,38 @@ def _search_bq_catalog(question_embedding: list[float], top_k: int) -> list[dict
             "description": meta.get("description", ""),
             "trust": meta.get("trust", "machine-confirmed"),
             "type": meta.get("type", "Table"),
+            "pack": meta.get("pack", DEFAULT_PACK),
             "score": 1 - float(row.distance),
         })
     return out
 
 
-def _search_okf_catalog(question_embedding: list[float], top_k: int) -> list[dict]:
-    """In-process cosine ranking over hand-authored okf-catalog/ docs. Small
-    corpus (curated templates + ported non-BQ sources) — no need for a
-    vector index; embeddings are cheap to recompute per request for now and
-    can be cached once the catalog grows."""
-    candidates = []
-    for doc in okf_loader.load_all():
-        text = f"{doc.title}\n{doc.description}\n{' '.join(doc.tags)}"
+# The finance pack raised the hand-authored corpus from 3 documents to ~17,
+# which would be ~17 embedding calls per request. Document text only changes
+# on a deploy, so cache by text for the life of the process.
+_embed_cache: dict[str, list[float]] = {}
+
+
+def _cached_embed(text: str) -> list[float]:
+    emb = _embed_cache.get(text)
+    if emb is None:
         emb = llm.embed(text)
+        _embed_cache[text] = emb
+    return emb
+
+
+def _search_okf_catalog(question_embedding: list[float], top_k: int, pack: str = DEFAULT_PACK) -> list[dict]:
+    """In-process cosine ranking over hand-authored okf-catalog/ docs in one
+    pack. Small corpus (curated templates + ported non-BQ sources) — no need
+    for a vector index; embeddings are cheap to recompute per request for now
+    and can be cached once the catalog grows. Deprecated documents are never
+    candidates."""
+    candidates = []
+    for doc in okf_loader.load_all(pack=pack):
+        if doc.lifecycle == "deprecated":
+            continue
+        text = f"{doc.title}\n{doc.description}\n{' '.join(doc.tags)}"
+        emb = _cached_embed(text)
         score = _cosine(question_embedding, emb)
         candidates.append({
             "source_id": doc.id,
@@ -105,17 +134,19 @@ def _search_okf_catalog(question_embedding: list[float], top_k: int) -> list[dic
             "description": doc.description,
             "trust": doc.trust,
             "type": doc.type,
+            "pack": pack,
             "score": score,
         })
     candidates.sort(key=lambda c: c["score"], reverse=True)
     return candidates[:top_k]
 
 
-def discover(question: str) -> list[dict]:
+def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
     """Returns merged, score-sorted candidates from the crawled BigQuery
-    catalog and the hand-authored OKF catalog, deduplicated by source_id."""
+    catalog and the hand-authored OKF catalog for one pack, deduplicated by
+    source_id."""
     question_embedding = llm.embed(question)
-    candidates = _search_bq_catalog(question_embedding, TOP_K) + _search_okf_catalog(question_embedding, TOP_K)
+    candidates = _search_bq_catalog(question_embedding, TOP_K, pack) + _search_okf_catalog(question_embedding, TOP_K, pack)
 
     seen = {}
     for c in candidates:

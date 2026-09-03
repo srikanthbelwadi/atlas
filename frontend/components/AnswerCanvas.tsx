@@ -1,6 +1,6 @@
 "use client";
 
-import { Answer, TrustLevel } from "@/lib/types";
+import { Answer, TrustLevel, VerdictRow } from "@/lib/types";
 
 const TRUST_LABEL: Record<TrustLevel, string> = {
   "human-reviewed": "Human-reviewed",
@@ -253,8 +253,78 @@ function Empty() {
   return <div style={{ color: "var(--ink-dim)", fontSize: "0.85rem" }}>No data to show.</div>;
 }
 
+const VERDICT_LABEL: Record<string, string> = {
+  verified: "verified",
+  differs: "differs",
+  not_verifiable: "not verifiable",
+  no_reported_value: "no reported value",
+};
+
+function fmtReported(v: number | null, isRatio: boolean): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  if (isRatio) return `${v.toFixed(2)}%`;
+  return Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 2 }).format(v);
+}
+
+// Finance pack, use case B4: one row per claim from /skills/filing-fact-check.
+// The chip colour is the verdict; the note under each claim names the metric
+// definition used, so "efficiency ratio" can never mean two things at once.
+function VerdictTableViz({ data }: { data: string }) {
+  const parsed = safeParse<unknown>(data, []);
+  const rows = Array.isArray(parsed) ? (parsed as VerdictRow[]) : [];
+  if (!rows.length) return <Empty />;
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="verdict-table">
+        <thead>
+          <tr>
+            <th>Claim</th>
+            <th>Reported</th>
+            <th>Source</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const isRatio = ["roa", "roe", "net_margin", "efficiency_ratio", "equity_to_assets"].includes(r.metric || "");
+            return (
+              <tr key={r.id || i}>
+                <td>
+                  <div>{r.claim}</div>
+                  {r.note && <div style={{ fontSize: "0.76rem", color: "var(--ink-dim)", marginTop: 3 }}>{r.note}</div>}
+                </td>
+                <td className="mono" style={{ whiteSpace: "nowrap" }}>
+                  {fmtReported(r.reported, isRatio)}
+                  {r.delta_pct !== null && r.delta_pct !== undefined && r.verdict === "differs" ? (
+                    <div style={{ fontSize: "0.74rem", color: "var(--danger)" }}>Δ {r.delta_pct}{isRatio ? " pts" : "%"}</div>
+                  ) : null}
+                </td>
+                <td className="mono" style={{ fontSize: "0.78rem" }}>
+                  {r.source || "—"}
+                  {r.accession ? (
+                    <div>
+                      <a href={`https://www.sec.gov/Archives/edgar/data/${r.accession.replace(/-/g, "")}/`} target="_blank" rel="noopener noreferrer">
+                        {r.accession}
+                      </a>
+                    </div>
+                  ) : null}
+                  {r.sources_agree ? <div style={{ color: "var(--ink-dim)" }}>sources {r.sources_agree}</div> : null}
+                </td>
+                <td>
+                  <span className={`verdict-chip ${r.verdict}`}>{VERDICT_LABEL[r.verdict] || r.verdict}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const VIZ_COMPONENTS: Record<string, (props: { data: string }) => JSX.Element> = {
   table: TableViz,
+  verdict_table: VerdictTableViz,
   bar: BarViz,
   line: LineViz,
   kpi_cards: KpiCardsViz,

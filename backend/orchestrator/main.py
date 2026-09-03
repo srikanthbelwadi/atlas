@@ -34,7 +34,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from firebase_admin import auth as firebase_auth, credentials, firestore as fb_firestore, initialize_app
 
-from . import pipeline
+from . import packs, pipeline
+from .skills import filing_fact_check
+from ..accessor import okf_loader
 
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ATLAS_ADMIN_EMAILS", "srikanthbelwadi@gmail.com").split(",") if e.strip()}
 # Accounts that skip the manual approval queue entirely — same allowlist
@@ -112,6 +114,17 @@ def healthz():
     return {"status": "ok"}
 
 
+def _resolve_pack(body: dict) -> str:
+    """`pack` is optional and defaults to the public demo. A pack the deploy
+    hasn't enabled (ATLAS_PACKS_ENABLED) is refused outright rather than
+    silently answered from the public catalog — the finance frontend must
+    never get a public-pack answer dressed up as a finance one."""
+    pack = (body.get("pack") or packs.DEFAULT_PACK).strip().lower()
+    if not packs.is_enabled(pack):
+        raise HTTPException(status_code=400, detail=f"Unknown or disabled pack: {pack}")
+    return pack
+
+
 @app.post("/ask")
 async def ask(request: Request, authorization: str | None = Header(default=None)):
     user = require_approved_user(authorization)
@@ -119,12 +132,94 @@ async def ask(request: Request, authorization: str | None = Header(default=None)
     question = (body.get("question") or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Missing 'question'")
+    pack = _resolve_pack(body)
 
     async def event_stream():
-        async for evt in pipeline.run(question, user["uid"]):
+        async for evt in pipeline.run(question, user["uid"], pack):
             yield {"event": evt["event"], "data": _json(evt["data"])}
 
     return EventSourceResponse(event_stream())
+
+
+@app.post("/skills/filing-fact-check")
+async def fact_check(request: Request, authorization: str | None = Header(default=None)):
+    """Finance pack: verify every numeric claim in a paragraph against SEC
+    filings through attested computations only. Same SSE stream shape as
+    /ask, plus claim.* events; see skills/filing_fact_check.py."""
+    user = require_approved_user(authorization)
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing 'text'")
+    if len(text) > 4000:
+        raise HTTPException(status_code=400, detail="Paragraph is too long (4,000 characters max).")
+    pack = _resolve_pack({"pack": body.get("pack") or "finance"})
+    if pack != "finance":
+        raise HTTPException(status_code=400, detail="Fact-check is only available in the finance pack.")
+
+    async def event_stream():
+        async for evt in filing_fact_check.run(text, user["uid"], pack):
+            yield {"event": evt["event"], "data": _json(evt["data"])}
+
+    return EventSourceResponse(event_stream())
+
+
+_catalog_cache: dict[str, tuple[float, dict]] = {}
+
+
+@app.get("/packs/{pack}/catalog")
+def pack_catalog(pack: str, user: dict = Depends(require_approved_user)):
+    """Everything discovery can see for one pack: crawled tables (from
+    ard_catalog.embeddings metadata) and hand-authored OKF documents, each
+    with its trust tier and, for reviewed templates, reviewer / freshness.
+    This is what /finance/catalog renders. Cached five minutes in-process —
+    it only changes on a crawl or a deploy."""
+    import time
+    if not packs.is_enabled(pack):
+        raise HTTPException(status_code=404, detail=f"Unknown or disabled pack: {pack}")
+    cached = _catalog_cache.get(pack)
+    if cached and time.monotonic() - cached[0] < 300:
+        return cached[1]
+
+    entries = []
+    for doc in okf_loader.load_all(pack=pack):
+        runtime = (doc.computation or {}).get("runtime", {}) if doc.computation else {}
+        entries.append({
+            "id": doc.id, "title": doc.title, "description": doc.description, "type": doc.type, "kind": doc.source.get("kind"),
+            "executor": doc.executor, "trust": doc.trust, **doc.governance(),
+            "parameters": [{"name": p.get("name"), "type": p.get("type", "STRING"), "required": p.get("required", True),
+                            "description": p.get("description", "")} for p in runtime.get("parameters", [])],
+            "sql": runtime.get("sql"), "body": doc.body, "tags": doc.tags, "sources": doc.sources or [doc.source],
+            "cost_profile": doc.cost_profile,
+        })
+    try:
+        from google.cloud import bigquery
+        from .discovery import ARD_CATALOG_DATASET, PROJECT_ID
+        import json as _json_mod
+        client = bigquery.Client(project=PROJECT_ID)
+        sql = f"""
+            SELECT doc_id, metadata, updated_at FROM `{PROJECT_ID}.{ARD_CATALOG_DATASET}.embeddings`
+            WHERE COALESCE(JSON_VALUE(metadata, '$.pack'), '{packs.DEFAULT_PACK}') = @pack
+            ORDER BY doc_id
+        """
+        job = client.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("pack", "STRING", pack)]))
+        for row in job.result(timeout=20):
+            meta = _json_mod.loads(row.metadata) if isinstance(row.metadata, str) else (row.metadata or {})
+            entries.append({
+                "id": row.doc_id, "title": meta.get("title", row.doc_id), "description": meta.get("description", ""),
+                "type": meta.get("type", "Table"), "kind": "bigquery", "executor": None, "trust": meta.get("trust", "machine-confirmed"),
+                "pack": pack, "reviewer": None, "reviewed_on": None, "stale_after": None, "stale": False, "lifecycle": "active",
+                "version": None, "row_count": meta.get("row_count"), "size_gb": meta.get("size_gb"), "large_table": meta.get("large_table"),
+                "source": meta.get("source"), "updated_at": str(row.updated_at),
+            })
+    except Exception as exc:  # noqa: BLE001 — catalog page still shows the OKF half if BigQuery is unreachable
+        print(f"[catalog] crawled rows unavailable for pack {pack}: {exc}")
+
+    result = {"pack": packs.info(pack), "entries": entries,
+              "counts": {"attested": sum(1 for e in entries if e["type"] == "AttestedComputation"),
+                         "tables": sum(1 for e in entries if e["type"] == "Table")}}
+    _catalog_cache[pack] = (time.monotonic(), result)
+    return result
 
 
 def _json(data: dict) -> str:

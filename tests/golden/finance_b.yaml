@@ -1,0 +1,23 @@
+# Use case B — Filing-Grounded Fact-Check & Peer Benchmark (plan §3.4).
+# B4 (paragraph fact-check) runs through /skills/filing-fact-check.
+pack: finance
+questions:
+  - id: B1
+    q: "What was JPMorgan's net income for fiscal 2025 according to its 10-K, and does the SEC bulk data set agree with the EDGAR API?"
+    expect: {path: attested, source_id: ac.sec_fact_reconcile, rows_include_source: reconciliation}
+  - id: B2
+    q: "Compare return on assets for the five largest US banks by deposits in 2025, using FDIC figures."
+    expect: {path: attested, source_id: ac.fdic_peer_ratios, params_include: {top_n: 5}}
+  - id: B3
+    q: "Revenue for Apple, Microsoft and Nvidia over the last five fiscal years."
+    expect: {path: attested, source_id_in: [ac.sec_edgar_company_metric_by_year, ac.sec_fact_annual_api]}
+  - id: B4
+    skill: filing-fact-check
+    text: "Bank of America grew deposits 6% in 2025 while its net income reached $27.1 billion and its efficiency ratio fell below 60%."
+    expect: {kind: verdict_table, claims_min: 2, verdicts_include: [not_verifiable]}
+  - id: B5
+    q: "Which state commercial bank filers (SIC 6022) reported a net loss in any quarter of 2025?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.sec_quarterly_financials, max_bytes_gb: 10}
+  - id: B6
+    q: "What was Lehman Brothers' revenue in 2024?"
+    expect: {path: refusal}

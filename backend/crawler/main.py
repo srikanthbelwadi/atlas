@@ -31,7 +31,7 @@ from google.cloud import bigquery
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))  # allow `backend.*` imports when run standalone
 
 from backend.orchestrator import llm  # noqa: E402
-from backend.crawler.targets import CRAWL_TARGETS, LARGE_TABLE_THRESHOLD_GB  # noqa: E402
+from backend.crawler.targets import DATASET_ALIASES, LARGE_TABLE_THRESHOLD_GB, targets_for  # noqa: E402
 
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "atlas-ard-okf")
 ARD_CATALOG_DATASET = os.environ.get("ATLAS_ARD_CATALOG_DATASET", "ard_catalog")
@@ -63,7 +63,7 @@ def ensure_catalog_table() -> None:
     client().query(ddl).result()
 
 
-def _describe_table(project: str, dataset: str, table_row) -> tuple[str, dict]:
+def _describe_table(project: str, dataset: str, table_row, pack: str = "public") -> tuple[str, dict]:
     """Returns (embedding_text, metadata_dict) for one INFORMATION_SCHEMA.TABLES row."""
     table_name = table_row.table_name
     full_ref = f"{project}.{dataset}.{table_name}"
@@ -112,35 +112,62 @@ def _describe_table(project: str, dataset: str, table_row) -> tuple[str, dict]:
         "row_count": table_row.row_count,
         "size_gb": round(size_gb, 2) if size_gb else None,
         "large_table": bool(size_gb and size_gb > LARGE_TABLE_THRESHOLD_GB),
+        "pack": pack,
     }
     return description, metadata
 
 
-def crawl_dataset(project: str, dataset: str) -> int:
+def _list_tables(project: str, dataset: str):
     tables_sql = f"""
         SELECT table_name, row_count, total_logical_bytes
         FROM `{project}.{dataset}`.INFORMATION_SCHEMA.TABLE_STORAGE
     """
     try:
-        tables = list(client().query(tables_sql).result(timeout=30))
+        return list(client().query(tables_sql).result(timeout=30))
     except Exception as exc:  # noqa: BLE001 — TABLE_STORAGE needs extra IAM in some projects; fall back to TABLES
         print(f"[crawler] TABLE_STORAGE unavailable for {dataset} ({exc}); falling back to TABLES (no size info)")
         fallback_sql = f"SELECT table_name, NULL AS row_count, NULL AS total_logical_bytes FROM `{project}.{dataset}`.INFORMATION_SCHEMA.TABLES"
-        tables = list(client().query(fallback_sql).result(timeout=30))
+        return list(client().query(fallback_sql).result(timeout=30))
+
+
+def crawl_dataset(project: str, dataset: str, pack: str = "public") -> int:
+    """Catalogues one dataset into one pack. A dataset that can't be read
+    under its listed name is retried under each DATASET_ALIASES entry (the
+    `fdic_banks` / `fdic` naming question), and the name that resolved is
+    printed so the crawl log answers it for good."""
+    names_to_try = (dataset,) + DATASET_ALIASES.get(dataset, ())
+    tables, resolved = [], dataset
+    last_exc = None
+    for name in names_to_try:
+        try:
+            tables = _list_tables(project, name)
+            resolved = name
+            break
+        except Exception as exc:  # noqa: BLE001 — try the next alias
+            last_exc = exc
+            print(f"[crawler] {project}.{name}: INFORMATION_SCHEMA unreadable ({exc})")
+    if not tables:
+        print(f"[crawler] {project}.{dataset}: no tables found under any name {names_to_try} — last error: {last_exc!r}")
+        return 0
+    if resolved != dataset:
+        print(f"[crawler] {project}.{dataset}: resolved under alias `{resolved}`")
 
     rows_to_upsert = []
     for t in tables:
         try:
-            text, metadata = _describe_table(project, dataset, t)
+            text, metadata = _describe_table(project, resolved, t, pack)
         except Exception as exc:  # noqa: BLE001 — one bad table shouldn't fail the whole dataset
-            print(f"[crawler] skipping {project}.{dataset}.{t.table_name}: {exc}")
+            print(f"[crawler] skipping {project}.{resolved}.{t.table_name}: {exc}")
             continue
         embedding = llm.embed(text)
-        doc_id = f"bq.{project}.{dataset}.{t.table_name}"
+        # Public-pack ids keep their original, un-suffixed form so nothing
+        # about the existing catalog rows changes; every other pack gets a
+        # suffix so a dataset shared across packs is indexed once per pack.
+        doc_id = f"bq.{project}.{resolved}.{t.table_name}" + ("" if pack == "public" else f"#{pack}")
         rows_to_upsert.append((doc_id, embedding, metadata))
 
     _upsert(rows_to_upsert)
-    print(f"[crawler] {project}.{dataset}: catalogued {len(rows_to_upsert)}/{len(tables)} tables")
+    print(f"[crawler] {project}.{resolved} [{pack}]: catalogued {len(rows_to_upsert)}/{len(tables)} tables")
     return len(rows_to_upsert)
 
 
@@ -176,30 +203,38 @@ def _upsert(rows: list[tuple[str, list[float], dict]]) -> None:
     client().delete_table(tmp_table, not_found_ok=True)
 
 
-def prune(active_targets: list[tuple[str, str]]) -> None:
+def prune(active_targets: list[tuple[str, str, str]]) -> None:
     """Removes ard_catalog.embeddings rows for datasets no longer in
-    CRAWL_TARGETS. Run explicitly with --prune; not part of the normal
-    scheduled crawl, so removing a dataset from targets.py doesn't silently
-    drop discovery coverage until someone means it to."""
-    keep_prefixes = [f"bq.{p}.{d}." for p, d in active_targets]
-    conditions = " AND ".join([f"doc_id NOT LIKE '{prefix}%'" for prefix in keep_prefixes]) or "TRUE"
-    sql = f"DELETE FROM `{PROJECT_ID}.{ARD_CATALOG_DATASET}.embeddings` WHERE doc_id LIKE 'bq.%' AND {conditions}"
-    result = client().query(sql).result()
-    print(f"[crawler] pruned rows outside current target list")
+    CRAWL_TARGETS (per pack). Run explicitly with --prune; not part of the
+    normal scheduled crawl, so removing a dataset from targets.py doesn't
+    silently drop discovery coverage until someone means it to."""
+    keep = []
+    for p, d, pack in active_targets:
+        names = (d,) + DATASET_ALIASES.get(d, ())
+        for n in names:
+            suffix = "" if pack == "public" else f"#{pack}"
+            keep.append(f"(doc_id LIKE 'bq.{p}.{n}.%' AND doc_id LIKE '%{suffix}')" if suffix else f"(doc_id LIKE 'bq.{p}.{n}.%' AND doc_id NOT LIKE '%#%')")
+    conditions = " OR ".join(keep) or "FALSE"
+    sql = f"DELETE FROM `{PROJECT_ID}.{ARD_CATALOG_DATASET}.embeddings` WHERE doc_id LIKE 'bq.%' AND NOT ({conditions})"
+    client().query(sql).result()
+    print("[crawler] pruned rows outside current target list")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Atlas BigQuery dataset crawler (works against any project/dataset the service account can read)")
     parser.add_argument("--prune", action="store_true", help="also delete embeddings rows for datasets no longer in targets.py")
+    parser.add_argument("--pack", default=os.environ.get("ATLAS_CRAWL_PACK") or None,
+                        help="crawl only this pack's datasets (default: every pack)")
     args = parser.parse_args()
 
     ensure_catalog_table()
+    targets = targets_for(args.pack)
     total = 0
-    for project, dataset in CRAWL_TARGETS:
-        total += crawl_dataset(project, dataset)
+    for project, dataset, pack in targets:
+        total += crawl_dataset(project, dataset, pack)
     if args.prune:
-        prune(CRAWL_TARGETS)
-    print(f"[crawler] done — {total} tables catalogued across {len(CRAWL_TARGETS)} datasets")
+        prune(targets_for(None))
+    print(f"[crawler] done — {total} tables catalogued across {len(targets)} dataset/pack targets" + (f" (pack={args.pack})" if args.pack else ""))
 
 
 if __name__ == "__main__":

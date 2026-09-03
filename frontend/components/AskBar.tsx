@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { askStream, ApiError } from "@/lib/api";
-import { Answer, TraceEvent } from "@/lib/types";
+import { Answer, Pack, TraceEvent } from "@/lib/types";
 
 const EXAMPLES = [
   "How did COVID case rates change by year in Alameda County, CA?",
@@ -52,8 +52,19 @@ const EXAMPLES = [
   "What was Google's revenue in 2023?",
 ];
 
+export interface ExampleGroup {
+  label: string;
+  questions: string[];
+}
+
 interface Props {
   busy: boolean;
+  // Finance pack additions — every one optional, defaulting to exactly the
+  // public demo's behaviour so `/` renders as it always has.
+  pack?: Pack;
+  placeholder?: string;
+  examples?: string[];
+  groupedExamples?: ExampleGroup[];
   onStart: () => void;
   onEvent: (event: TraceEvent) => void;
   onAnswer: (answer: Answer) => void;
@@ -65,7 +76,7 @@ interface Props {
   onError: (message: string, errorData: Record<string, unknown> | null) => void;
 }
 
-export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Props) {
+export default function AskBar({ busy, pack, placeholder, examples, groupedExamples, onStart, onEvent, onAnswer, onError }: Props) {
   const [question, setQuestion] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -118,7 +129,7 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
     try {
       const token = await getIdToken();
       if (!token) throw new ApiError(401, "Not signed in");
-      for await (const event of askStream(q.trim(), token)) {
+      for await (const event of askStream(q.trim(), token, { pack })) {
         onEvent(event);
         if (event.event === "answer") {
           sawTerminalEvent = true;
@@ -150,7 +161,7 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onFocus={(e) => e.currentTarget.select()}
-          placeholder="Ask a question your data can answer…"
+          placeholder={placeholder || "Ask a question your data can answer…"}
           disabled={busy}
           style={{
             flex: 1,
@@ -184,24 +195,28 @@ export default function AskBar({ busy, onStart, onEvent, onAnswer, onError }: Pr
           to backtrack to another source. Follow along in the trace below.
         </div>
       )}
-      {!busy && (
+      {!busy && !groupedExamples && (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {EXAMPLES.map((ex) => (
-            <button
-              key={ex}
-              onClick={() => submit(ex)}
-              style={{
-                fontSize: "0.8rem",
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                color: "var(--ink-dim)",
-                cursor: "pointer",
-              }}
-            >
+          {(examples || EXAMPLES).map((ex) => (
+            <button key={ex} onClick={() => submit(ex)} className="example-chip">
               {ex}
             </button>
+          ))}
+        </div>
+      )}
+      {!busy && groupedExamples && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+          {groupedExamples.map((group) => (
+            <div key={group.label}>
+              <div className="example-group-label">{group.label}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {group.questions.map((ex) => (
+                  <button key={ex} onClick={() => submit(ex)} className="example-chip">
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

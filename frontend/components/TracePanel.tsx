@@ -7,6 +7,7 @@ const STAGES: { key: string; label: string }[] = [
   { key: "discover", label: "Discovering sources" },
   { key: "plan", label: "Planning the query" },
   { key: "fetch", label: "Fetching data" },
+  { key: "claim", label: "Checking claims" },
   { key: "check", label: "Checking the evidence" },
   { key: "synthesize", label: "Composing the answer" },
 ];
@@ -92,6 +93,42 @@ function notesFor(stage: string, events: TraceEvent[]): Note[] {
       }
     }
     return notes;
+  }
+
+  if (stage === "claim") {
+    // Finance pack fact-check: one line per claim as its verdict lands.
+    const notes: Note[] = [];
+    for (const e of forStage) {
+      if (e.event === "claim.extracted") {
+        const n = ((e.data.claims as unknown[]) || []).length;
+        notes.push({ text: `${n} checkable claim${n === 1 ? "" : "s"} extracted` });
+      } else if (e.event === "claim.verdict") {
+        notes.push({ text: `${String(e.data.verdict).replace("_", " ")} — ${String(e.data.claim || "").slice(0, 90)}` });
+      }
+    }
+    return notes;
+  }
+
+  if (stage === "fetch") {
+    // Multi-step computations (finance pack: sample → theme, or one step per
+    // reconciliation source) report each step as it happens; keep them all.
+    const steps = forStage.filter((e) => e.event === "fetch.progress" && e.data.step);
+    if (steps.length) {
+      const notes: Note[] = steps.map((e) => ({ text: String(e.data.note || `${e.data.step}: ${e.data.rows} rows`) }));
+      const done = forStage.find((e) => e.event === "fetch.done");
+      if (done) notes.push({ text: `${done.data.rows} row${done.data.rows === 1 ? "" : "s"} · ${((done.data.bytes_billed as number) / 1024 ** 2).toFixed(1)} MB scanned` });
+      return notes;
+    }
+  }
+
+  if (stage === "check") {
+    const verify = forStage.find((e) => e.event === "check.done" && e.data.verified_quotes !== undefined);
+    if (verify) {
+      const last = forStage[forStage.length - 1];
+      const notes: Note[] = [{ text: String(verify.data.note || `Verified ${verify.data.verified_quotes} quotes`) }];
+      if (last !== verify && last.event === "check.done") notes.push({ text: last.data.ok ? `${last.data.row_count} rows look usable` : `Rejected: ${last.data.reason}` });
+      return notes;
+    }
   }
 
   // Every other stage (guardrail, fetch, check): unchanged single-line

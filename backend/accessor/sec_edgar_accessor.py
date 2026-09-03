@@ -66,24 +66,13 @@ COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 # exactly the bug a live test surfaced: Apple's FY2023 revenue lives under
 # the ASC 606 tag, not the legacy `Revenues` tag, which has none). All
 # candidates are real, well-known US-GAAP concepts — never a guessed tag.
-CURATED_METRICS: dict[str, tuple[str, tuple[str, ...], str]] = {
-    "revenue": (
-        "us-gaap",
-        (
-            "Revenues",
-            "RevenueFromContractWithCustomerExcludingAssessedTax",
-            "RevenueFromContractWithCustomerIncludingAssessedTax",
-        ),
-        "USD",
-    ),
-    "net_income": ("us-gaap", ("NetIncomeLoss",), "USD"),
-    "total_assets": ("us-gaap", ("Assets",), "USD"),
-    "total_liabilities": ("us-gaap", ("Liabilities",), "USD"),
-    "operating_income": ("us-gaap", ("OperatingIncomeLoss",), "USD"),
-    "cash_and_equivalents": ("us-gaap", ("CashAndCashEquivalentsAtCarryingValue",), "USD"),
-    "eps_diluted": ("us-gaap", ("EarningsPerShareDiluted",), "USD/shares"),
-    "shares_outstanding": ("dei", ("EntityCommonStockSharesOutstanding",), "shares"),
-}
+# The map itself now lives in xbrl_metrics.py so the BigQuery-side
+# Attested Computation (ac.sec_fact_from_bq) and this API accessor read one
+# definition of record and can be reconciled against each other. The shape
+# used here — (taxonomy, candidate tags, unit) — is unchanged.
+from .xbrl_metrics import CURATED_METRICS as _CURATED_FULL, legacy_view as _legacy_view, period_kind  # noqa: E402
+
+CURATED_METRICS: dict[str, tuple[str, tuple[str, ...], str]] = _legacy_view()
 
 
 class SecEdgarError(Exception):
@@ -312,3 +301,97 @@ def fetch_metric(company: str, metric: str, fiscal_year: int | None = None) -> d
     rows.sort(key=lambda r: (r.get("fiscal_year") or 0, r.get("period_end") or ""))
     concept_label = f"{taxonomy}:" + "|".join(contributing_concepts)
     return {"rows": rows, "cik": cik, "entity_name": entity_name, "concept": concept_label}
+
+
+def fetch_annual_fact(company: str, metric: str, fiscal_year: int) -> dict:
+    """The single reported value of `metric` for one fiscal year, chosen the
+    way an analyst would read the 10-K — and the way ac.sec_fact_from_bq
+    chooses it from the SEC bulk data set, so the two can be reconciled.
+
+    Rules (mirrored in the BigQuery template):
+      - annual filings only: form 10-K or 10-K/A, fiscal period FY;
+      - `fy` in company-facts is the FILING's fiscal year, and a 10-K restates
+        prior years under the same fy — so among that filing's rows keep the
+        one with the latest period end (the current year);
+      - duration metrics must span roughly a year (>= 300 days) so a Q4-only
+        value never masquerades as the annual figure;
+      - if more than one filing matches (an original and an amendment), the
+        latest `filed` wins.
+
+    Returns {"rows": [row] or [], "cik", "entity_name", "concept",
+    "selection_rule"}; empty rows mean "no annual fact on file", never an
+    error."""
+    import datetime as _dt
+
+    base = fetch_metric(company, metric, fiscal_year)
+    kind = period_kind(metric)
+    candidates = []
+    for r in base["rows"]:
+        if (r.get("form") or "") not in ("10-K", "10-K/A") or (r.get("fiscal_period") or "") != "FY":
+            continue
+        if kind == "duration":
+            try:
+                span = (_dt.date.fromisoformat(r["period_end"]) - _dt.date.fromisoformat(r["period_start"])).days
+            except (TypeError, ValueError, KeyError):
+                continue
+            if span < 300:
+                continue
+        candidates.append(r)
+    if not candidates:
+        return {**base, "rows": [], "selection_rule": "10-K/FY, latest period end, latest filing"}
+    latest_end = max(c["period_end"] for c in candidates)
+    at_end = [c for c in candidates if c["period_end"] == latest_end]
+    chosen = max(at_end, key=lambda c: c.get("filed") or "")
+    row = {**chosen, "source": "sec_edgar_api", "accession": None}
+    return {**base, "rows": [row], "selection_rule": "10-K/FY, latest period end, latest filing"}
+
+
+def compute_ratio(company: str, ratio: str, fiscal_year: int) -> dict:
+    """Finance pack: one curated ratio from 10-K facts, every input fetched
+    through fetch_annual_fact() and the definition (numerator, denominator,
+    averaging) taken from xbrl_metrics.CURATED_RATIOS — the answer names it.
+    Returns {"rows": [row] or [], "cik", "entity_name", "definition"}."""
+    from .xbrl_metrics import CURATED_RATIOS
+
+    if ratio not in CURATED_RATIOS:
+        raise SecEdgarError(f"\"{ratio}\" isn't a curated ratio: {', '.join(sorted(CURATED_RATIOS))}.", code="unknown_ratio")
+    spec = CURATED_RATIOS[ratio]
+
+    def annual(metric: str, fy: int):
+        res = fetch_annual_fact(company, metric, fy)
+        return (res["rows"][0] if res["rows"] else None), res
+
+    num_row, num_res = annual(spec["numerator"], fiscal_year)
+    den_row, _ = annual(spec["denominator"], fiscal_year)
+    extra_row = None
+    if spec.get("extra_denominator"):
+        extra_row, _ = annual(spec["extra_denominator"], fiscal_year)
+    base = {"cik": num_res["cik"], "entity_name": num_res["entity_name"], "definition": spec["definition"]}
+    if num_row is None or den_row is None or (spec.get("extra_denominator") and extra_row is None):
+        return {**base, "rows": []}
+
+    denominator = float(den_row["value"]) + (float(extra_row["value"]) if extra_row else 0.0)
+    averaging = "year-end"
+    if spec.get("avg_denominator"):
+        prior_row, _ = annual(spec["denominator"], fiscal_year - 1)
+        if prior_row is not None:
+            denominator = (float(den_row["value"]) + float(prior_row["value"])) / 2
+            averaging = "average of two fiscal year-ends"
+        else:
+            averaging = "year-end (prior year-end not on file)"
+    if denominator == 0:
+        return {**base, "rows": []}
+    value = float(num_row["value"]) / denominator
+    row = {
+        "source": "sec_edgar_api",
+        "ratio": ratio,
+        "ratio_pct": round(value * 100, 3),
+        "fiscal_year": fiscal_year,
+        "numerator": spec["numerator"], "numerator_value": num_row["value"],
+        "denominator": spec["denominator"] + (f" + {spec['extra_denominator']}" if spec.get("extra_denominator") else ""),
+        "denominator_value": denominator,
+        "averaging": averaging,
+        "definition": spec["definition"],
+        "period_end": num_row.get("period_end"), "form": num_row.get("form"), "filed": num_row.get("filed"),
+    }
+    return {**base, "rows": [row]}

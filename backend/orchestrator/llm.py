@@ -24,6 +24,7 @@ from google import genai
 from google.genai import types
 
 from ..accessor import okf_loader
+from . import packs
 
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "atlas-ard-okf")
 LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
@@ -153,9 +154,11 @@ def _describe_candidate_for_planning(c: dict) -> dict:
     return out
 
 
-def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict]:
+def classify_and_plan(question: str, candidates: list[dict], pack: str = packs.DEFAULT_PACK) -> tuple[dict, dict]:
     """PLAN_MODEL call: question shape + source routing + optional SQL draft
-    or template parameter extraction. Returns (plan, usage)."""
+    or template parameter extraction. Returns (plan, usage). `pack` only
+    appends that pack's glossary (empty for the public pack, so the public
+    prompt is byte-for-byte what it was)."""
     described = [_describe_candidate_for_planning(c) for c in candidates]
     single_candidate = len(candidates) == 1
     prompt = (
@@ -234,7 +237,8 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
         "live: exact-match SQL against free-text columns returned 0 rows "
         "for a median-income-by-city question and a state-unemployment "
         "question, both with real matching data sitting in the table.\n\n"
-        f"Question: {question!r}\nCandidates: {json.dumps(described)}\n"
+        + packs.glossary(pack)
+        + f"Question: {question!r}\nCandidates: {json.dumps(described)}\n"
         "Respond as JSON: {\"shape\": str, \"source_id\": str, "
         "\"needs_sql\": bool, \"sql\": str or null, \"params\": object, "
         "\"reasoning\": str}. Always include \"params\" — an empty object {} "
@@ -254,7 +258,7 @@ def classify_and_plan(question: str, candidates: list[dict]) -> tuple[dict, dict
     return plan, _usage(resp)
 
 
-def synthesize(question: str, evidence: dict) -> tuple[dict, dict]:
+def synthesize(question: str, evidence: dict, pack: str = packs.DEFAULT_PACK) -> tuple[dict, dict]:
     """SYNTHESIS_MODEL call: grounded answer + citations + presentation spec.
     Returns (presentation, usage)."""
     prompt = (
@@ -278,6 +282,7 @@ def synthesize(question: str, evidence: dict) -> tuple[dict, dict]:
         "  map         -> {\"points\": [{\"lat\": number, \"lon\": number, \"label\": string}, ...]}\n"
         "Every array named above (labels, values, series, stats, points) "
         "must be present, even if empty — never omit it."
+        + packs.synthesis_rules(pack)
     )
     resp = client().models.generate_content(
         model=SYNTHESIS_MODEL,
@@ -298,3 +303,115 @@ def embed(text: str) -> list[float]:
         contents=text,
     )
     return resp.embeddings[0].values
+
+
+# --- finance pack: narrative theming and claim extraction (plan-tier model) ---
+
+THEMES_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "themes": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "name": {"type": "STRING"},
+                    "share_pct": {"type": "NUMBER", "description": "share of the sampled narratives this theme covers, 0-100"},
+                    "summary": {"type": "STRING"},
+                    "quotes": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "complaint_id": {"type": "STRING"},
+                                "excerpt": {"type": "STRING", "description": "verbatim excerpt, 10-40 words, copied exactly from that complaint's narrative"},
+                            },
+                            "required": ["complaint_id", "excerpt"],
+                        },
+                    },
+                },
+                "required": ["name", "share_pct", "summary", "quotes"],
+            },
+        }
+    },
+    "required": ["themes"],
+}
+
+
+def theme_narratives(question: str, narratives: list[dict], instructions: str, max_themes: int = 6) -> tuple[dict, dict]:
+    """Second step of a `bigquery_sample_llm` Attested Computation: the
+    sampled narratives (already byte-capped and row-limited by the template's
+    own SQL) are themed by the plan-tier model. `instructions` is the
+    template's own reviewed prompt text (computation.runtime.prompt) — the
+    model is told what to do by the OKF document, not by request-time text.
+
+    Every quote must be a verbatim excerpt with the complaint_id it came
+    from; pipeline.py's check stage re-verifies each one against the sample
+    and drops anything that doesn't match, so a fabricated quote can never
+    reach the answer. Returns ({themes: [...]}, usage)."""
+    compact = [
+        {"complaint_id": str(n.get("complaint_id")), "narrative": (n.get("consumer_complaint_narrative") or "")[:1200]}
+        for n in narratives
+    ]
+    prompt = (
+        "You are Atlas's narrative analyst for a finance compliance team.\n"
+        f"{instructions}\n\n"
+        f"Identify at most {max_themes} themes across the sampled complaint narratives below. "
+        "For each theme give a short name, the approximate share of narratives it covers, a "
+        "two-sentence summary, and 2-3 representative quotes. A quote MUST be copied verbatim "
+        "from one narrative (10-40 words, no paraphrase, no ellipsis edits) and carry that "
+        "narrative's complaint_id. Never invent a complaint_id or a quote.\n\n"
+        f"Question being answered: {question!r}\n"
+        f"Sampled narratives ({len(compact)}): {json.dumps(compact)}"
+    )
+    resp = client().models.generate_content(
+        model=PLAN_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=THEMES_SCHEMA),
+    )
+    return json.loads(resp.text), _usage(resp)
+
+
+CLAIMS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "claims": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "id": {"type": "STRING"},
+                    "text": {"type": "STRING", "description": "the claim exactly as written"},
+                    "entity": {"type": "STRING", "description": "company name or ticker as written, or empty"},
+                    "metric": {"type": "STRING", "description": "one of the curated metric or ratio keys, or empty if none fits"},
+                    "fiscal_year": {"type": "INTEGER"},
+                    "claimed_value": {"type": "STRING", "description": "the number or direction claimed, as written"},
+                    "claim_kind": {"type": "STRING", "enum": ["level", "growth", "ratio", "direction", "other"]},
+                },
+                "required": ["id", "text", "entity", "metric", "claimed_value", "claim_kind"],
+            },
+        }
+    },
+    "required": ["claims"],
+}
+
+
+def extract_claims(text: str, metric_keys: list[str], ratio_keys: list[str]) -> tuple[dict, dict]:
+    """Fact-check step 1: split a paragraph into checkable numeric claims and
+    map each to a curated metric/ratio key (or leave it empty, which becomes a
+    'not verifiable' verdict — never a guess). Returns ({claims: [...]}, usage)."""
+    prompt = (
+        "You are Atlas's claim extractor. Split the paragraph into individual factual claims "
+        "about a company's reported financials. For each claim, name the company as written, "
+        "the fiscal year if stated (otherwise omit fiscal_year), the value or direction claimed, "
+        "and map it to exactly one of these curated keys when one fits — otherwise leave metric "
+        "empty. Do not merge two claims into one; do not invent a year.\n"
+        f"Metric keys (levels): {metric_keys}\nRatio keys: {ratio_keys}\n\n"
+        f"Paragraph: {text!r}"
+    )
+    resp = client().models.generate_content(
+        model=PLAN_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=CLAIMS_SCHEMA),
+    )
+    return json.loads(resp.text), _usage(resp)

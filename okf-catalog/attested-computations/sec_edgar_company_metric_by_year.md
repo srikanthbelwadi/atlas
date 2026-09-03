@@ -9,6 +9,13 @@ description: >
   free company-facts API — no model-drafted query, and no model-chosen XBRL
   tag; both the fetch and the metric-to-tag mapping are curated.
 trust: human-reviewed
+# Shared by the public demo and the finance pack (see okf_loader.py `packs`).
+packs: [public, finance]
+reviewer: Bel
+reviewed_on: 2026-09-03
+stale_after: 2027-03-01
+version: "2"
+citation_template: "SEC EDGAR company-facts API; metric resolved to a curated US-GAAP/DEI tag (backend/accessor/xbrl_metrics.py), all reported periods as filed."
 tags: [sec, edgar, xbrl, company, financials, revenue, net-income]
 source:
   kind: sec_edgar
@@ -31,8 +38,12 @@ computation:
         required: true
         description: >
           One of a fixed, curated set of plain-language metric keys: revenue,
-          net_income, total_assets, total_liabilities, operating_income,
-          cash_and_equivalents, eps_diluted, shares_outstanding. Never a raw
+          net_income, operating_income, interest_expense, income_tax_expense,
+          net_interest_income, provision_for_credit_losses, noninterest_expense,
+          noninterest_income, eps_diluted, dividends_declared_per_share,
+          operating_cash_flow, capital_expenditures, total_assets,
+          total_liabilities, stockholders_equity, cash_and_equivalents,
+          deposits, loans, long_term_debt, shares_outstanding. Never a raw
           XBRL tag — pick the closest curated key to what the question asks.
       - name: fiscal_year
         type: INTEGER
@@ -67,7 +78,7 @@ lookup.
 - Only companies that file XBRL-tagged financials with the SEC (effectively:
   all US public companies) are covered — no private companies, no non-US
   filers without a US listing.
-- Only the 8 curated metrics above are fetchable today. A real company that
+- Only the 21 curated metrics above (defined once in `backend/accessor/xbrl_metrics.py`) are fetchable today. A real company that
   simply never reported one of these tags (e.g. a bank without a standard
   `OperatingIncomeLoss` line) correctly returns "no data" rather than a
   wrong number.

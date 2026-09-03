@@ -97,10 +97,38 @@ def run_attested_computation(doc_id: str, param_values: dict, byte_cap: int, tim
     bound_params = {}
     for p in declared_params:
         name = p["name"]
-        if name not in param_values:
+        ptype = p.get("type", "STRING")
+        if name in param_values and param_values[name] not in (None, ""):
+            value = _coerce(param_values[name], ptype)
+        elif "default" in p:
+            value = _coerce(p["default"], ptype)
+        elif not p.get("required", True):
+            # Optional with no default binds NULL so the template can say
+            # `(@product IS NULL OR product = @product)` — the planner never
+            # has to invent a value to satisfy the binding.
+            value = None
+        else:
             raise ValueError(f"Missing required parameter '{name}' for {doc_id}")
-        query_params.append(bigquery.ScalarQueryParameter(name, p.get("type", "STRING"), param_values[name]))
-        bound_params[name] = param_values[name]
+        query_params.append(bigquery.ScalarQueryParameter(name, ptype, value))
+        bound_params[name] = value
 
     rows, bytes_billed = run(sql, query_params, byte_cap=byte_cap, timeout_seconds=timeout_seconds)
     return rows, bytes_billed, doc, sql, bound_params
+
+
+def _coerce(value, ptype: str):
+    """The planner returns parameter values as JSON — an INT64 parameter may
+    arrive as "2025" or 2025.0. Coerce to the declared BigQuery type so the
+    query parameter binds cleanly; leave anything unrecognised alone."""
+    try:
+        if ptype in ("INT64", "INTEGER"):
+            return int(float(value))
+        if ptype in ("FLOAT64", "NUMERIC", "FLOAT"):
+            return float(value)
+        if ptype == "BOOL":
+            return str(value).lower() in ("true", "1", "yes")
+        if ptype == "DATE":
+            return str(value)[:10]
+    except (TypeError, ValueError):
+        return value
+    return value

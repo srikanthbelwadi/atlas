@@ -99,23 +99,44 @@ def check_monthly_budget(user_id: str) -> float:
     return spent
 
 
-def record_usage(user_id: str, bytes_billed: int, plan_usage: dict, synth_usage: dict) -> dict:
+def _plan_tier_cost(usage: dict) -> float:
+    return (
+        (usage.get("prompt_tokens", 0) / 1_000_000) * PLAN_MODEL_INPUT_PRICE_PER_MTOK
+        + (usage.get("output_tokens", 0) / 1_000_000) * PLAN_MODEL_OUTPUT_PRICE_PER_MTOK
+    )
+
+
+def record_usage(
+    user_id: str,
+    bytes_billed: int,
+    plan_usage: dict,
+    synth_usage: dict,
+    extra_usage: dict | None = None,
+    pack: str = "public",
+) -> dict:
     """Called once per completed query. Computes real cost from BigQuery
     bytes billed plus actual Gemini token counts (see llm.py's `_usage()`) —
     not a flat per-call guess like the original `gemini_calls * fixed_cost`
     version. Returns a cost breakdown dict, threaded into the query's
     walkthrough so token cost is visible per-request, not just as a running
-    total."""
+    total.
+
+    `extra_usage` (finance pack) carries any additional plan-tier model calls
+    a computation made beyond plan + synthesize — today the narrative-theming
+    step of `bigquery_sample_llm` templates (key "theme") and the claim
+    extraction of the fact-check skill (key "claims"). They are priced at the
+    plan-tier rates and reported separately so the receipt can show a
+    "generation" line. `pack` is recorded as a per-pack breakdown on the same
+    monthly usage doc; the ceiling itself stays per user, across packs."""
     bq_cost = (bytes_billed / (1024**4)) * BQ_PRICE_PER_TIB_USD
-    plan_cost = (
-        (plan_usage.get("prompt_tokens", 0) / 1_000_000) * PLAN_MODEL_INPUT_PRICE_PER_MTOK
-        + (plan_usage.get("output_tokens", 0) / 1_000_000) * PLAN_MODEL_OUTPUT_PRICE_PER_MTOK
-    )
+    plan_cost = _plan_tier_cost(plan_usage)
     synth_cost = (
         (synth_usage.get("prompt_tokens", 0) / 1_000_000) * SYNTH_MODEL_INPUT_PRICE_PER_MTOK
         + (synth_usage.get("output_tokens", 0) / 1_000_000) * SYNTH_MODEL_OUTPUT_PRICE_PER_MTOK
     )
-    cost = bq_cost + plan_cost + synth_cost
+    extra_usage = extra_usage or {}
+    generation_cost = sum(_plan_tier_cost(u) for u in extra_usage.values())
+    cost = bq_cost + plan_cost + synth_cost + generation_cost
     doc_ref = db().collection("usage").document(_usage_doc_id(user_id))
 
     @firestore.transactional
@@ -129,12 +150,18 @@ def record_usage(user_id: str, bytes_billed: int, plan_usage: dict, synth_usage:
                 "estimated_cost_usd": prior + cost,
                 "query_count": firestore.Increment(1),
                 "updated_at": firestore.SERVER_TIMESTAMP,
+                "by_pack": {
+                    pack: {
+                        "estimated_cost_usd": firestore.Increment(cost),
+                        "query_count": firestore.Increment(1),
+                    }
+                },
             },
             merge=True,
         )
 
     _bump(db().transaction())
-    return {
+    out = {
         "bq_cost_usd": round(bq_cost, 6),
         "plan_cost_usd": round(plan_cost, 6),
         "synth_cost_usd": round(synth_cost, 6),
@@ -142,3 +169,7 @@ def record_usage(user_id: str, bytes_billed: int, plan_usage: dict, synth_usage:
         "plan_tokens": plan_usage,
         "synth_tokens": synth_usage,
     }
+    if extra_usage:
+        out["generation_cost_usd"] = round(generation_cost, 6)
+        out["generation_tokens"] = extra_usage
+    return out

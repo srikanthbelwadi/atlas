@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import Logo from "@/components/Logo";
+import { FINANCE_ENABLED } from "@/lib/finance";
 
 const GITHUB_URL = "https://github.com/srikanthbelwadi/atlas";
 
@@ -35,6 +36,11 @@ export default function Header() {
             <a href="/#how-it-works" className="nav-link">
               How it works
             </a>
+          )}
+          {FINANCE_ENABLED && (
+            <Link href="/finance" className="nav-link">
+              Finance
+            </Link>
           )}
           <Link href="/implementation" className="nav-link">
             Implementation

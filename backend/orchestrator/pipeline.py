@@ -60,17 +60,23 @@ first — see the `attempt == 0` check in the loop below.
 import asyncio
 import time
 
-from . import discovery, guardrails, llm
+from . import discovery, guardrails, llm, packs
 from ..accessor import bigquery_accessor, okf_loader, sec_edgar_accessor
 
 MAX_BACKTRACKS = 1
+
+# Finance pack (see packs.py / IMPLEMENTATION.md "packs"): `run()` takes a
+# `pack` and threads it into discovery (which only returns that pack's
+# sources), the planner/synthesis prompts (which only append that pack's
+# glossary), usage accounting, and the terminal answer's `receipt`. The
+# default is the public pack, so every existing caller behaves as before.
 
 
 async def _to_thread(fn, *args, **kwargs):
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-async def run(question: str, user_id: str):
+async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
     t0 = time.monotonic()
 
     def elapsed():
@@ -84,6 +90,7 @@ async def run(question: str, user_id: str):
     # or failure alike.
     walkthrough = {
         "question": question,
+        "pack": pack,
         "sources_considered": [],
         "source_used": None,
         "queries_executed": [],
@@ -105,7 +112,7 @@ async def run(question: str, user_id: str):
 
         # --- discover: ARD candidate resolution across BQ + OKF catalog ---
         yield {"event": "discover.started", "data": {"question": question}}
-        candidates = await _to_thread(discovery.discover, question)
+        candidates = await _to_thread(discovery.discover, question, pack)
         walkthrough["sources_considered"] = [
             {"source_id": c["source_id"], "title": c["title"], "trust": c["trust"], "score": round(c["score"], 3)}
             for c in candidates
@@ -117,7 +124,7 @@ async def run(question: str, user_id: str):
 
         # --- plan: question shape + source routing (Gemini, fast tier) ---
         yield {"event": "plan.started", "data": {}}
-        plan, plan_usage = await _to_thread(llm.classify_and_plan, question, candidates)
+        plan, plan_usage = await _to_thread(llm.classify_and_plan, question, candidates, pack)
         walkthrough["token_usage"]["plan"] = plan_usage
         chosen = next((c for c in candidates if c["source_id"] == plan.get("source_id")), candidates[0])
         yield {
@@ -139,6 +146,8 @@ async def run(question: str, user_id: str):
         # failed attempt instead of being lost with it. ---
         evidence = None
         bytes_billed = 0
+        extra_usage: dict = {}   # plan-tier calls made inside a computation (theming), priced separately
+        receipt_doc = None       # the OKF doc behind the evidence, for the receipt
         remaining = [chosen] + [c for c in candidates if c["source_id"] != chosen["source_id"]]
 
         for attempt, candidate in enumerate(remaining[: MAX_BACKTRACKS + 1]):
@@ -160,7 +169,7 @@ async def run(question: str, user_id: str):
                 candidate_plan = plan
             else:
                 yield {"event": "plan.started", "data": {"note": f"redrafting for {candidate['source_id']}"}}
-                candidate_plan, replan_usage = await _to_thread(llm.classify_and_plan, question, [candidate])
+                candidate_plan, replan_usage = await _to_thread(llm.classify_and_plan, question, [candidate], pack)
                 walkthrough["token_usage"][f"plan_backtrack_{attempt}"] = replan_usage
                 yield {
                     "event": "plan.done",
@@ -217,13 +226,22 @@ async def run(question: str, user_id: str):
 
             rows = fetched["rows"]
             bytes_billed = fetched["bytes_billed"]
-            walkthrough["queries_executed"].append({
+            # Multi-step computations (composite / sample-then-theme) report
+            # one queries_executed entry per step so the walkthrough shows
+            # every query that actually ran, not just a roll-up.
+            for step in fetched.get("steps") or [{
                 "source_id": candidate["source_id"],
                 "sql": fetched.get("sql"),
                 "params": fetched.get("params") or {},
                 "bytes_billed": bytes_billed,
                 "row_count": len(rows),
-            })
+            }]:
+                walkthrough["queries_executed"].append(step)
+                if fetched.get("steps"):
+                    yield {"event": "fetch.progress", "data": {"step": step.get("step"), "source_id": step.get("source_id"), "bytes_billed": step.get("bytes_billed", 0), "rows": step.get("row_count", 0), "note": step.get("note", "")}}
+            if fetched.get("usage"):
+                extra_usage.update(fetched["usage"])
+                walkthrough["token_usage"].update(fetched["usage"])
             yield {
                 "event": "fetch.done",
                 "data": {
@@ -237,6 +255,14 @@ async def run(question: str, user_id: str):
 
             # --- check: sanity-check the evidence before handing it to synthesis ---
             yield {"event": "check.started", "data": {}}
+            if rows and fetched.get("verify_quotes"):
+                # Narrative theming: every quoted excerpt must exist, verbatim,
+                # in the sampled narrative it claims to come from. Anything
+                # that doesn't is dropped here — a fabricated quote can never
+                # reach the answer — and the trace says how many survived.
+                rows, verified, dropped = _verify_quotes(rows, fetched["verify_quotes"])
+                yield {"event": "check.done", "data": {"ok": True, "verified_quotes": verified, "dropped_quotes": dropped,
+                       "note": f"Verified {verified} of {verified + dropped} quoted narratives against the sample"}}
             if not rows:
                 yield {"event": "check.done", "data": {"ok": False, "reason": "empty_result"}}
                 walkthrough["backtracks"].append({"from": candidate["source_id"], "reason": "empty_result"})
@@ -249,11 +275,14 @@ async def run(question: str, user_id: str):
             preview = rows[:3]
             yield {"event": "check.done", "data": {"ok": True, "row_count": len(rows), "preview": preview}}
             walkthrough["source_used"] = {"id": candidate["source_id"], "title": candidate["title"], "trust": candidate["trust"]}
+            receipt_doc = fetched.get("doc")
             evidence = {
                 "question": question,
                 "source": walkthrough["source_used"],
                 "rows": rows[:500],  # keep the synthesis prompt bounded regardless of result size
             }
+            if receipt_doc is not None and getattr(receipt_doc, "citation_template", None):
+                evidence["definition"] = receipt_doc.citation_template
             break
 
         if evidence is None:
@@ -281,7 +310,7 @@ async def run(question: str, user_id: str):
                 )
             },
         }
-        presentation, synth_usage = await _to_thread(llm.synthesize, question, evidence)
+        presentation, synth_usage = await _to_thread(llm.synthesize, question, evidence, pack)
         walkthrough["token_usage"]["synthesize"] = synth_usage
         yield {
             "event": "synthesize.progress",
@@ -309,25 +338,27 @@ async def run(question: str, user_id: str):
         walkthrough["token_usage"]["plan"] = total_plan_usage
 
         cost = await _to_thread(
-            guardrails.record_usage, user_id, bytes_billed, total_plan_usage, synth_usage
+            guardrails.record_usage, user_id, bytes_billed, total_plan_usage, synth_usage, extra_usage, pack
         )
         walkthrough["cost"] = cost
         yield {
             "event": "synthesize.done",
-            "data": {"elapsed_s": elapsed(), "query_cost_usd": cost["total_cost_usd"], "tokens": synth_usage},
+            "data": {"elapsed_s": elapsed(), "query_cost_usd": cost["total_cost_usd"], "tokens": synth_usage,
+                     **({"generation_cost_usd": cost["generation_cost_usd"]} if "generation_cost_usd" in cost else {})},
         }
 
-        yield {
-            "event": "answer",
-            "data": {
-                "question": question,
-                "narrative": presentation["narrative"],
-                "citations": presentation["citations"],
-                "visualization": presentation["visualization"],
-                "elapsed_s": elapsed(),
-                "walkthrough": finalize(),
-            },
+        answer = {
+            "question": question,
+            "narrative": presentation["narrative"],
+            "citations": presentation["citations"],
+            "visualization": presentation["visualization"],
+            "elapsed_s": elapsed(),
+            "walkthrough": finalize(),
         }
+        receipt = build_receipt(receipt_doc, walkthrough, bytes_billed, cost)
+        if receipt:
+            answer["receipt"] = receipt
+        yield {"event": "answer", "data": answer}
 
     except guardrails.GuardrailError as exc:
         yield {"event": "guardrail.blocked", "data": {"code": exc.code, "message": exc.message, **exc.detail}}
@@ -352,6 +383,14 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
     are what pipeline.run() puts in fetch.done and the walkthrough's
     "queries executed" list, so the actual query text is visible, not just a
     row count."""
+    if candidate.get("type") == "AttestedComputation":
+        doc = okf_loader.load_by_id(candidate["source_id"])
+        executor = doc.executor if doc else None
+        if executor == "bigquery_sample_llm":
+            return _fetch_sample_then_theme(doc, plan, question)
+        if executor == "composite":
+            return _fetch_composite(doc, plan, question)
+
     if candidate["kind"] == "bigquery" and candidate.get("type") == "AttestedComputation":
         cap = guardrails.byte_cap_for(True, is_template=True)
         params = plan.get("params", {})
@@ -382,11 +421,34 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
         result = sec_edgar_accessor.fetch_metric(
             company=params.get("company", ""),
             metric=params.get("metric", ""),
-            fiscal_year=params.get("fiscal_year"),
+            fiscal_year=_as_int(params.get("fiscal_year")),
         )
         bound_params = {"company": result["entity_name"], "cik": result["cik"], "metric": result["concept"]}
         if params.get("fiscal_year"):
             bound_params["fiscal_year"] = params["fiscal_year"]
+        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
+
+    if candidate["kind"] == "sec_edgar_annual":
+        # Finance pack: one annual fact, selected the 10-K way (see
+        # sec_edgar_accessor.fetch_annual_fact) — the API half of
+        # ac.sec_fact_reconcile, also usable on its own.
+        params = plan.get("params", {})
+        doc = okf_loader.load_by_id(candidate["source_id"])
+        result = sec_edgar_accessor.fetch_annual_fact(
+            company=params.get("company", ""), metric=params.get("metric", ""), fiscal_year=_as_int(params.get("fiscal_year")) or 0
+        )
+        bound_params = {"company": result["entity_name"], "cik": result["cik"], "metric": result["concept"],
+                        "fiscal_year": params.get("fiscal_year"), "selection_rule": result.get("selection_rule")}
+        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
+
+    if candidate["kind"] == "sec_ratio":
+        params = plan.get("params", {})
+        doc = okf_loader.load_by_id(candidate["source_id"])
+        result = sec_edgar_accessor.compute_ratio(
+            company=params.get("company", ""), ratio=params.get("ratio", ""), fiscal_year=_as_int(params.get("fiscal_year")) or 0
+        )
+        bound_params = {"company": result["entity_name"], "cik": result["cik"], "ratio": params.get("ratio"),
+                        "fiscal_year": params.get("fiscal_year"), "definition": result.get("definition")}
         return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
 
     # Non-BigQuery source ported from Resource Raiser, described purely via OKF.
@@ -406,4 +468,175 @@ def _no_evidence_answer(question: str) -> dict:
         "narrative": "I couldn't find a data source that answers this well enough to cite. Try rephrasing, or narrow it to a specific place, time range, or metric.",
         "citations": [],
         "visualization": {"kind": "table", "data": "[]"},
+    }
+
+
+# --- finance pack helpers ---------------------------------------------------
+
+def _as_int(value):
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _fetch_sample_then_theme(doc, plan: dict, question: str) -> dict:
+    """Executor `bigquery_sample_llm` (use case A narrative theming).
+
+    Step 1 — the template's own SQL draws a bounded sample of narratives
+    through the same guarded path as every other Attested Computation (dry
+    run against the template byte cap, `maximum_bytes_billed`, timeout).
+    `sample_n` is clamped server-side to the template's declared maximum no
+    matter what the planner extracted.
+
+    Step 2 — the plan-tier model themes the sample using the prompt text in
+    the OKF document (`computation.runtime.prompt`), never request-time
+    instructions. The result rows are the themes; the raw sample is returned
+    separately under `verify_quotes` so pipeline.run()'s check stage can drop
+    any quote that isn't a verbatim excerpt of the narrative it cites."""
+    runtime = doc.computation["runtime"]
+    params = dict(plan.get("params", {}))
+    max_sample = int(runtime.get("max_sample_n", 500))
+    params["sample_n"] = min(_as_int(params.get("sample_n")) or max_sample, max_sample)
+    for p in runtime.get("parameters", []):
+        if p["name"] not in params and "default" in p:
+            params[p["name"]] = p["default"]
+    cap = guardrails.byte_cap_for(True, is_template=True)
+    sample, bytes_billed, _doc, sql, bound = bigquery_accessor.run_attested_computation(
+        doc.id, params, byte_cap=cap, timeout_seconds=guardrails.QUERY_TIMEOUT_SECONDS
+    )
+    steps = [{"step": "sample", "source_id": doc.id, "sql": sql, "params": bound, "bytes_billed": bytes_billed,
+              "row_count": len(sample), "note": f"Sampled {len(sample)} consented narratives under the byte cap"}]
+    if not sample:
+        return {"rows": [], "bytes_billed": bytes_billed, "sql": sql, "params": bound, "doc": doc, "steps": steps}
+
+    themed, usage = llm.theme_narratives(question, sample, runtime.get("prompt", ""), int(runtime.get("max_themes", 6)))
+    rows = []
+    for t in themed.get("themes", []):
+        rows.append({
+            "theme": t.get("name"),
+            "share_pct": t.get("share_pct"),
+            "summary": t.get("summary"),
+            "quotes": t.get("quotes", []),
+        })
+    steps.append({"step": "theme", "source_id": doc.id, "sql": None, "params": {"model": llm.PLAN_MODEL, "narratives": len(sample)},
+                  "bytes_billed": 0, "row_count": len(rows), "note": f"Themed {len(sample)} narratives into {len(rows)} themes"})
+    return {"rows": rows, "bytes_billed": bytes_billed, "sql": sql, "params": bound, "doc": doc,
+            "steps": steps, "usage": {"theme": usage}, "verify_quotes": sample}
+
+
+def _verify_quotes(rows: list[dict], sample: list[dict]) -> tuple[list[dict], int, int]:
+    """Keeps only quotes whose excerpt is a verbatim substring (whitespace-
+    normalised, case-insensitive) of the narrative with that complaint_id."""
+    import re as _re
+
+    def norm(text: str) -> str:
+        return _re.sub(r"\s+", " ", (text or "")).strip().lower()
+
+    by_id = {str(r.get("complaint_id")): norm(r.get("consumer_complaint_narrative") or "") for r in sample}
+    verified = dropped = 0
+    out = []
+    for row in rows:
+        kept = []
+        for q in row.get("quotes") or []:
+            narrative = by_id.get(str(q.get("complaint_id")))
+            excerpt = norm(q.get("excerpt", ""))
+            if narrative and excerpt and excerpt in narrative:
+                kept.append(q)
+                verified += 1
+            else:
+                dropped += 1
+        out.append({**row, "quotes": kept})
+    return out, verified, dropped
+
+
+def _fetch_composite(doc, plan: dict, question: str) -> dict:
+    """Executor `composite` (use case B reconciliation). The OKF document
+    lists ordered `steps`, each naming another Attested Computation and how
+    to map this computation's parameters onto it; every step runs through
+    its own executor with its own guardrails and is reported as its own
+    queries_executed entry. `combine: reconcile` lines the step results up
+    per source and adds `delta_pct` / `agreement` columns."""
+    runtime = doc.computation["runtime"]
+    params = plan.get("params", {})
+    steps_out, rows_by_step, total_bytes = [], {}, 0
+    for step in runtime.get("steps", []):
+        sub_doc = okf_loader.load_by_id(step["computation"])
+        if sub_doc is None:
+            raise ValueError(f"Composite {doc.id} references unknown computation {step['computation']}")
+        mapped = {target: params.get(source) for target, source in (step.get("params") or {}).items()}
+        sub_candidate = {"source_id": sub_doc.id, "kind": sub_doc.source.get("kind", "bigquery"),
+                         "type": sub_doc.type, "title": sub_doc.title, "trust": sub_doc.trust}
+        result = _fetch_one(sub_candidate, {"params": mapped}, question)
+        total_bytes += result.get("bytes_billed", 0)
+        rows_by_step[step["name"]] = result["rows"]
+        steps_out.append({"step": step["name"], "source_id": sub_doc.id, "sql": result.get("sql"), "params": result.get("params") or {},
+                          "bytes_billed": result.get("bytes_billed", 0), "row_count": len(result["rows"]),
+                          "note": step.get("note", "")})
+
+    if runtime.get("combine") == "reconcile":
+        rows = _reconcile(rows_by_step, runtime.get("value_field", "value"), float(runtime.get("tolerance_pct", 0.5)))
+    else:
+        rows = [{"step": name, **r} for name, rs in rows_by_step.items() for r in rs]
+    return {"rows": rows, "bytes_billed": total_bytes, "sql": None, "params": params, "doc": doc, "steps": steps_out}
+
+
+def _reconcile(rows_by_step: dict, value_field: str, tolerance_pct: float) -> list[dict]:
+    """One output row per source plus a verdict row. Missing sources are
+    reported as such rather than dropped, so 'the API has it but the bulk
+    data set doesn't' is a visible finding."""
+    values = {}
+    out = []
+    for name, rs in rows_by_step.items():
+        first = rs[0] if rs else None
+        val = first.get(value_field) if first else None
+        values[name] = val
+        out.append({
+            "source": name,
+            "value": val,
+            "unit": (first or {}).get("unit"),
+            "period_end": (first or {}).get("period_end"),
+            "accession": (first or {}).get("accession"),
+            "form": (first or {}).get("form"),
+            "filed": (first or {}).get("filed"),
+            "status": "reported" if val is not None else "no annual fact on file",
+        })
+    present = [v for v in values.values() if isinstance(v, (int, float))]
+    if len(present) >= 2:
+        hi, lo = max(present), min(present)
+        delta_pct = (hi - lo) / abs(hi) * 100 if hi else 0.0
+        agreement = "agree" if delta_pct <= tolerance_pct else "differ"
+    elif len(present) == 1:
+        delta_pct, agreement = None, "single source"
+    else:
+        delta_pct, agreement = None, "no data"
+    out.append({"source": "reconciliation", "value": None, "delta_pct": round(delta_pct, 3) if delta_pct is not None else None,
+                "agreement": agreement, "tolerance_pct": tolerance_pct, "status": agreement})
+    return out
+
+
+def build_receipt(doc, walkthrough: dict, bytes_billed: int, cost: dict | None) -> dict | None:
+    """The receipt is the artefact a model-risk reviewer keeps: which
+    reviewed template answered, its version and reviewer, whether it is past
+    its stale_after date, every query that ran, bytes, tokens and cost. Only
+    Attested Computations get one — an ad-hoc answer's walkthrough is already
+    its full account, and labelling it with a reviewer would be a lie."""
+    if doc is None or getattr(doc, "type", None) != "AttestedComputation":
+        return None
+    gov = doc.governance()
+    return {
+        "template_id": doc.id,
+        "title": doc.title,
+        **gov,
+        "executor": doc.executor,
+        "sources": doc.sources or [doc.source],
+        "queries": [
+            {"step": q.get("step"), "source_id": q.get("source_id"), "bytes_billed": q.get("bytes_billed", 0),
+             "row_count": q.get("row_count", 0), "params": q.get("params") or {}}
+            for q in walkthrough.get("queries_executed", [])
+        ],
+        "bytes_billed": bytes_billed,
+        "tokens": walkthrough.get("token_usage", {}),
+        "cost": cost,
+        "citation_template": doc.citation_template,
     }

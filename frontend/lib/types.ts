@@ -18,7 +18,13 @@ export type TraceEventName =
   | "synthesize.progress"
   | "synthesize.done"
   | "answer"
-  | "error";
+  | "error"
+  // finance pack: fact-check skill (backend/orchestrator/skills/filing_fact_check.py)
+  | "claim.extracted"
+  | "claim.verdict";
+
+// Catalog packs (backend/orchestrator/packs.py). Omitted = "public".
+export type Pack = "public" | "finance";
 
 export interface TraceEvent {
   event: TraceEventName;
@@ -34,7 +40,7 @@ export interface Citation {
   trust: TrustLevel;
 }
 
-export type VisualizationKind = "table" | "bar" | "line" | "kpi_cards" | "map" | "infographic";
+export type VisualizationKind = "table" | "bar" | "line" | "kpi_cards" | "map" | "infographic" | "verdict_table";
 
 export interface Visualization {
   kind: VisualizationKind;
@@ -48,6 +54,88 @@ export interface Answer {
   visualization: Visualization;
   elapsed_s: number;
   walkthrough?: Walkthrough;
+  // Present only when an Attested Computation answered (finance pack today;
+  // see pipeline.build_receipt). The artefact a reviewer keeps.
+  receipt?: Receipt;
+}
+
+export interface ReceiptQuery {
+  step?: string | null;
+  source_id: string;
+  bytes_billed: number;
+  row_count: number;
+  params: Record<string, unknown>;
+}
+
+export interface Receipt {
+  template_id: string;
+  title: string;
+  version: string | null;
+  reviewer: string | null;
+  reviewed_on: string | null;
+  stale_after: string | null;
+  stale: boolean;
+  lifecycle: string;
+  trust: TrustLevel;
+  pack: string;
+  executor: string | null;
+  sources: Record<string, unknown>[];
+  queries: ReceiptQuery[];
+  bytes_billed: number;
+  tokens: Record<string, TokenUsage>;
+  cost: (WalkthroughCost & { generation_cost_usd?: number }) | null;
+  citation_template: string | null;
+}
+
+// One row of a fact-check verdict table (visualization kind "verdict_table").
+export type Verdict = "verified" | "differs" | "not_verifiable" | "no_reported_value";
+
+export interface VerdictRow {
+  id: string;
+  claim: string;
+  entity: string;
+  metric: string | null;
+  fiscal_year: number | null;
+  claimed: string | null;
+  reported: number | null;
+  source: string | null;
+  accession: string | null;
+  delta_pct: number | null;
+  verdict: Verdict;
+  sources_agree?: string | null;
+  note?: string;
+}
+
+// GET /packs/{pack}/catalog
+export interface CatalogEntry {
+  id: string;
+  title: string;
+  description: string;
+  type: "Table" | "AttestedComputation" | "Dataset";
+  kind: string | null;
+  executor: string | null;
+  trust: TrustLevel;
+  pack: string;
+  reviewer: string | null;
+  reviewed_on: string | null;
+  stale_after: string | null;
+  stale: boolean;
+  lifecycle: string;
+  version: string | null;
+  parameters?: { name: string; type: string; required: boolean; description: string }[];
+  sql?: string | null;
+  body?: string;
+  tags?: string[];
+  sources?: Record<string, unknown>[];
+  row_count?: number | null;
+  size_gb?: number | null;
+  large_table?: boolean | null;
+}
+
+export interface PackCatalog {
+  pack: { id: string; title: string; tagline: string };
+  entries: CatalogEntry[];
+  counts: { attested: number; tables: number };
 }
 
 // Mirrors the `walkthrough` dict backend/orchestrator/pipeline.py builds up
@@ -62,6 +150,7 @@ export interface WalkthroughSource {
 }
 
 export interface WalkthroughQuery {
+  step?: string | null;   // multi-step computations (finance pack) name each step
   source_id: string;
   sql: string | null;
   params: Record<string, unknown>;
@@ -98,11 +187,12 @@ export interface WalkthroughSourceUsed {
 
 export interface Walkthrough {
   question: string;
+  pack?: Pack;
   sources_considered: WalkthroughSource[];
   source_used: WalkthroughSourceUsed | null;
   queries_executed: WalkthroughQuery[];
   backtracks: WalkthroughBacktrack[];
-  token_usage: { plan?: TokenUsage; synthesize?: TokenUsage };
+  token_usage: { plan?: TokenUsage; synthesize?: TokenUsage; theme?: TokenUsage; claims?: TokenUsage };
   cost: WalkthroughCost | null;
   elapsed_s: number | null;
 }

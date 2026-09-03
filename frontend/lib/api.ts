@@ -1,4 +1,4 @@
-import { AdminUser, TraceEvent, TraceEventName } from "./types";
+import { AdminUser, Pack, PackCatalog, TraceEvent, TraceEventName } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_ATLAS_API_BASE_URL || "";
 
@@ -31,14 +31,31 @@ async function authedFetch(path: string, token: string, init: RequestInit = {}) 
  * wire format (`event: ...\ndata: ...\n\n`) by hand off a `fetch` response
  * body reader instead of using EventSource.
  */
-export async function* askStream(question: string, token: string, signal?: AbortSignal): AsyncGenerator<TraceEvent> {
-  const res = await fetch(`${API_BASE}/ask`, {
+export async function* askStream(
+  question: string,
+  token: string,
+  opts: { pack?: Pack; signal?: AbortSignal } = {},
+): AsyncGenerator<TraceEvent> {
+  // `pack` is only sent when it's not the public default, so the request
+  // body the public demo sends today is byte-for-byte unchanged.
+  const body: Record<string, unknown> = { question };
+  if (opts.pack && opts.pack !== "public") body.pack = opts.pack;
+  yield* sseStream("/ask", body, token, opts.signal);
+}
+
+/** Finance pack: POST /skills/filing-fact-check — same SSE shape as /ask plus claim.* events. */
+export async function* factCheckStream(text: string, token: string, signal?: AbortSignal): AsyncGenerator<TraceEvent> {
+  yield* sseStream("/skills/filing-fact-check", { text, pack: "finance" }, token, signal);
+}
+
+async function* sseStream(path: string, body: Record<string, unknown>, token: string, signal?: AbortSignal): AsyncGenerator<TraceEvent> {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(body),
     signal,
   });
 
@@ -95,6 +112,13 @@ function parseSseFrame(frame: string): { event: TraceEventName; data: Record<str
   } catch {
     return { event: eventName as TraceEventName, data: {} };
   }
+}
+
+// --- packs ---------------------------------------------------------------
+
+export async function getPackCatalog(pack: Pack, token: string): Promise<PackCatalog> {
+  const res = await authedFetch(`/packs/${pack}/catalog`, token);
+  return res.json();
 }
 
 // --- admin console -------------------------------------------------------

@@ -1,0 +1,27 @@
+# The public demo's suggestion chips (frontend/components/AskBar.tsx), all
+# live-verified before the finance pack existed. This set is the
+# "did not interfere" proof: run it against the finance-enabled revision
+# with pack=public and every expectation below must still hold.
+pack: public
+questions:
+  - q: "How did COVID case rates change by year in Alameda County, CA?"
+    expect: {path: attested, source_id: ac.covid19_case_rate_by_county_year}
+  - q: "Which US counties had the worst air quality last year?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.epa_historical_air_quality}
+  - q: "How did COVID-19 case rates change over time in Los Angeles County, CA?"
+    expect: {path: attested, source_id: ac.covid19_case_rate_by_county_year}
+  - q: "What was the average temperature in Chicago in 2023?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.noaa_gsod}
+  - q: "What are the most common types of crime reported in Chicago?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.chicago_crime}
+  - q: "What was the most popular baby name in the United States in 2020?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.usa_names}
+  - q: "Which candidates raised the most money in federal campaign contributions recently?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.fec}
+  - q: "What is the unemployment rate in California?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.bls}
+  - q: "What was Google's revenue in 2023?"
+    expect: {path: attested, source_id: ac.sec_edgar_company_metric_by_year}
+  # Must NOT be answerable from the public pack even after the finance crawl:
+  - q: "Which five products had the largest year-over-year increase in CFPB complaints in 2025?"
+    expect: {path: refusal_or_no_finance_source, forbidden_source_prefix: bq.bigquery-public-data.cfpb_complaints}

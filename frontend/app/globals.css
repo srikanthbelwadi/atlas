@@ -343,3 +343,252 @@ button {
   border-top: 1px solid var(--border);
   margin: 32px 0;
 }
+
+
+/* --- Example chips (AskBar): moved from inline styles so the finance pack's
+   grouped chips and the public demo's flat list share one definition --- */
+
+.example-chip {
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.example-chip:hover {
+  color: var(--ink);
+  border-color: var(--ink-dim);
+}
+
+.example-group-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 6px;
+}
+
+/* --- Finance pack: banner, segmented control, receipt, verdicts, catalog --- */
+
+.pack-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+
+.pack-banner strong {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.segmented button {
+  border: none;
+  background: transparent;
+  color: var(--ink-dim);
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--navy);
+  color: white;
+}
+
+.trust-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.trust-chip.human-reviewed { background: var(--accent-2-soft); color: var(--accent-2); }
+.trust-chip.machine-confirmed { background: var(--surface-2); color: var(--navy); }
+.trust-chip.unverified { background: var(--danger-soft); color: var(--danger); }
+.trust-chip.stale { background: var(--accent-soft); color: var(--accent); }
+.trust-chip.draft { background: var(--surface-2); color: var(--ink-dim); }
+
+.receipt {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 18px 20px;
+}
+
+.receipt-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.receipt-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.receipt-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  font-size: 0.84rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-grid dt {
+  color: var(--ink-dim);
+  margin: 0;
+}
+
+.receipt-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.receipt-note {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
+.verdict-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.verdict-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  color: var(--ink-dim);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.verdict-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.verdict-chip.verified { background: var(--accent-2-soft); color: var(--accent-2); }
+.verdict-chip.differs { background: var(--danger-soft); color: var(--danger); }
+.verdict-chip.not_verifiable, .verdict-chip.no_reported_value { background: var(--accent-soft); color: var(--accent); }
+
+.catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.catalog-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  color: var(--ink-dim);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.catalog-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.catalog-row {
+  cursor: pointer;
+}
+
+.catalog-row:hover td {
+  background: var(--surface-2);
+}
+
+.catalog-detail {
+  background: var(--surface);
+  padding: 14px 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.catalog-detail pre {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.filter-row button {
+  font-size: 0.8rem;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.filter-row button[aria-pressed="true"] {
+  border-color: var(--navy);
+  color: var(--navy);
+}
+
+textarea.fact-check-input {
+  width: 100%;
+  min-height: 110px;
+  padding: 14px 16px;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  resize: vertical;
+}

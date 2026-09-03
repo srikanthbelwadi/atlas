@@ -10,34 +10,68 @@ useful, general-audience datasets, biased toward ones that answer the kind of
 question a natural-language front door is actually good for (place + time +
 metric questions).
 
+Packs: every target belongs to one or more packs (see
+backend/accessor/okf_loader.py). The original fourteen datasets are the
+`public` pack — the demo at atlasdata.world/ — and the finance section at
+/finance discovers only the `finance` pack. A dataset listed under two packs
+(BLS below) is catalogued once per pack, under a pack-suffixed doc_id, so
+each pack's discovery index is self-contained.
+
 Add a dataset here (and redeploy the crawler, or just wait for the weekly
 scheduled run) to bring it into ARD discovery. Removing one here does not
 delete its existing `ard_catalog.embeddings` rows — run `main.py --prune` to
 also drop rows for datasets no longer in this list.
 """
 
-# (project, dataset) pairs. Project is almost always "bigquery-public-data";
+# (project, dataset, packs). Project is almost always "bigquery-public-data";
 # kept explicit so a non-public source (e.g. a licensed Analytics Hub
-# dataset) can be added the same way later.
-CRAWL_TARGETS: list[tuple[str, str]] = [
-    ("bigquery-public-data", "covid19_open_data"),
-    ("bigquery-public-data", "census_bureau_acs"),
-    ("bigquery-public-data", "world_bank_health_population"),
-    ("bigquery-public-data", "world_bank_wdi"),
-    ("bigquery-public-data", "epa_historical_air_quality"),
-    ("bigquery-public-data", "noaa_gsod"),
-    ("bigquery-public-data", "google_trends"),
-    ("bigquery-public-data", "bls"),
-    ("bigquery-public-data", "chicago_crime"),
-    ("bigquery-public-data", "san_francisco"),
-    ("bigquery-public-data", "new_york"),
-    ("bigquery-public-data", "openaq"),
-    ("bigquery-public-data", "usa_names"),
-    ("bigquery-public-data", "fec"),
+# dataset, or a customer's own project) can be added the same way later.
+CRAWL_TARGETS: list[tuple[str, str, tuple[str, ...]]] = [
+    # --- public pack: the original demo catalog, unchanged ---
+    ("bigquery-public-data", "covid19_open_data", ("public",)),
+    ("bigquery-public-data", "census_bureau_acs", ("public",)),
+    ("bigquery-public-data", "world_bank_health_population", ("public",)),
+    ("bigquery-public-data", "world_bank_wdi", ("public",)),
+    ("bigquery-public-data", "epa_historical_air_quality", ("public",)),
+    ("bigquery-public-data", "noaa_gsod", ("public",)),
+    ("bigquery-public-data", "google_trends", ("public",)),
+    ("bigquery-public-data", "bls", ("public", "finance")),
+    ("bigquery-public-data", "chicago_crime", ("public",)),
+    ("bigquery-public-data", "san_francisco", ("public",)),
+    ("bigquery-public-data", "new_york", ("public",)),
+    ("bigquery-public-data", "openaq", ("public",)),
+    ("bigquery-public-data", "usa_names", ("public",)),
+    ("bigquery-public-data", "fec", ("public",)),
+    # --- finance pack: public datasets standing in for bank-internal systems
+    #     (see atlas-finance-demo-plan.md §5) ---
+    ("bigquery-public-data", "cfpb_complaints", ("finance",)),          # complaint case-management system
+    ("bigquery-public-data", "fdic_banks", ("finance",)),               # entity master + peer ratios
+    ("bigquery-public-data", "sec_quarterly_financials", ("finance",)), # fundamentals warehouse (XBRL)
+    ("bigquery-public-data", "sec_failure_to_deliver", ("finance",)),   # settlement-exceptions ledger
 ]
+
+# Google's public-datasets-pipelines repo defines the FDIC dataset as `fdic`
+# while the console has long shown it as `fdic_banks`. The crawler tries the
+# listed name first and falls back to the alias if INFORMATION_SCHEMA can't
+# be read, recording which one resolved in the crawl log (phase 0.3 of the
+# finance plan is exactly this check).
+DATASET_ALIASES: dict[str, tuple[str, ...]] = {
+    "fdic_banks": ("fdic",),
+}
 
 # Tables larger than this are still cataloged (so the model knows they exist
 # and can warn the user / route to an Attested Computation instead of raw
 # SQL) but flagged `large_table: true` in metadata so the planner leans
 # towards templates over ad-hoc SQL for them.
 LARGE_TABLE_THRESHOLD_GB = 50
+
+
+def targets_for(pack: str | None) -> list[tuple[str, str, str]]:
+    """Flattens CRAWL_TARGETS into (project, dataset, pack) triples, one per
+    pack membership, optionally restricted to a single pack."""
+    out = []
+    for project, dataset, packs in CRAWL_TARGETS:
+        for p in packs:
+            if pack is None or p == pack:
+                out.append((project, dataset, p))
+    return out

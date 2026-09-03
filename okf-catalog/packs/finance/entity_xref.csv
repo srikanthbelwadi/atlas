@@ -1,0 +1,64 @@
+display_name,entity_kind,cfpb_company_name,fdic_cert,cik,ticker,aliases,seed_status
+JPMorgan Chase,bank,"JPMORGAN CHASE & CO.",628,19617,JPM,"jpmorgan|jp morgan|chase|jpmorgan chase & co",seed
+Bank of America,bank,"BANK OF AMERICA, NATIONAL ASSOCIATION",3510,70858,BAC,"bofa|bank of america corp|bank of america corporation",seed
+Wells Fargo,bank,"WELLS FARGO & COMPANY",3511,72971,WFC,"wells|wells fargo bank|wells fargo & co",seed
+Citigroup,bank,"CITIBANK, N.A.",7213,831001,C,"citi|citibank|citigroup inc",seed
+U.S. Bancorp,bank,"U.S. BANCORP",6548,36104,USB,"us bank|u.s. bank|us bancorp|usbank",seed
+PNC Financial Services,bank,"PNC BANK N.A.",6384,713676,PNC,"pnc|pnc bank|pnc financial",seed
+Truist Financial,bank,"TRUIST FINANCIAL CORPORATION",9846,92230,TFC,"truist|truist bank|bb&t|suntrust",seed
+Capital One,bank,"CAPITAL ONE FINANCIAL CORPORATION",4297,927628,COF,"capital one bank|capital one financial",seed
+TD Bank US,bank,"TD BANK US HOLDING COMPANY",18409,947263,TD,"td bank|td bank n.a.|toronto-dominion",seed
+Goldman Sachs,bank,"GOLDMAN SACHS BANK USA",33124,886982,GS,"goldman|goldman sachs group|marcus",seed
+Morgan Stanley,bank,"MORGAN STANLEY",32992,895421,MS,"morgan stanley bank",seed
+Ally Financial,bank,"ALLY FINANCIAL INC.",57803,40729,ALLY,"ally|ally bank",seed
+Synchrony Financial,bank,"SYNCHRONY FINANCIAL",27314,1601712,SYF,"synchrony|synchrony bank",seed
+Discover Financial,bank,"DISCOVER BANK",5649,1393612,DFS,"discover|discover card|discover financial services",seed
+American Express,bank,"AMERICAN EXPRESS COMPANY",27471,4962,AXP,"amex|american express national bank",seed
+Citizens Financial Group,bank,"CITIZENS FINANCIAL GROUP, INC.",57957,759944,CFG,"citizens|citizens bank",seed
+Fifth Third Bancorp,bank,"FIFTH THIRD FINANCIAL CORPORATION",6672,35527,FITB,"fifth third|fifth third bank|53 bank",seed
+KeyCorp,bank,"KEYBANK NATIONAL ASSOCIATION",17534,91576,KEY,"keybank|key bank|keycorp",seed
+Regions Financial,bank,"REGIONS FINANCIAL CORPORATION",12368,1281761,RF,"regions|regions bank",seed
+M&T Bank,bank,"M&T BANK CORPORATION",588,36270,MTB,"m&t|m and t bank|m&t bank corp",seed
+Huntington Bancshares,bank,"HUNTINGTON NATIONAL BANK, THE",6560,49196,HBAN,"huntington|huntington bank|huntington national bank",seed
+Charles Schwab,bank,"CHARLES SCHWAB & CO., INC.",57450,316709,SCHW,"schwab|charles schwab bank",seed
+BMO Financial (US),bank,"BMO HARRIS BANK NATIONAL ASSOCIATION",16571,927971,BMO,"bmo|bmo harris|bmo bank",seed
+First Citizens BancShares,bank,"FIRST-CITIZENS BANK & TRUST COMPANY",11063,798941,FCNCA,"first citizens|first citizens bank",seed
+Santander (US),bank,"SANTANDER BANK, NATIONAL ASSOCIATION",29950,891478,SAN,"santander|santander bank|santander consumer",seed
+HSBC (US),bank,"HSBC NORTH AMERICA HOLDINGS INC.",57890,1089113,HSBC,"hsbc|hsbc bank usa",seed
+Comerica,bank,"COMERICA BANK",983,28412,CMA,"comerica bank",seed
+Zions Bancorporation,bank,"ZIONS BANCORPORATION, N.A.",2270,109380,ZION,"zions|zions bank",seed
+USAA,bank,"USAA FEDERAL SAVINGS BANK",34955,,,"usaa bank|usaa fsb",seed
+Navy Federal Credit Union,credit_union,"NAVY FEDERAL CREDIT UNION",,,,"navy federal|nfcu",seed
+Barclays (US),bank,"BARCLAYS BANK DELAWARE",57203,312070,BCS,"barclays|barclays bank",seed
+Flagstar / New York Community,bank,"FLAGSTAR BANK, N.A.",32942,910073,FLG,"flagstar|new york community bank|nycb",seed
+Webster Financial,bank,"WEBSTER BANK, NATIONAL ASSOCIATION",18221,801337,WBS,"webster|webster bank",seed
+Western Alliance,bank,"WESTERN ALLIANCE BANK",57512,1212545,WAL,"western alliance bank",seed
+East West Bancorp,bank,"EAST WEST BANK",31628,1069157,EWBC,"east west bank",seed
+Valley National,bank,"VALLEY NATIONAL BANK",9396,714310,VLY,"valley national bank|valley bank",seed
+Synovus,bank,"SYNOVUS BANK",873,18349,SNV,"synovus bank",seed
+Popular (Banco Popular),bank,"BANCO POPULAR DE PUERTO RICO",34967,763901,BPOP,"banco popular|popular inc",seed
+Associated Banc-Corp,bank,"ASSOCIATED BANK, N.A.",5296,7789,ASB,"associated bank",seed
+Frost Bank (Cullen/Frost),bank,"FROST BANK",3502,39263,CFR,"frost|cullen/frost|frost bank",seed
+Equifax,credit_bureau,"EQUIFAX, INC.",,33185,EFX,"equifax inc",seed
+Experian,credit_bureau,"Experian Information Solutions Inc.",,,,"experian information solutions",seed
+TransUnion,credit_bureau,"TRANSUNION INTERMEDIATE HOLDINGS, INC.",,1552033,TRU,"transunion llc|trans union",seed
+Apple,company,,,320193,AAPL,"apple inc",seed
+Microsoft,company,,,789019,MSFT,"microsoft corp|microsoft corporation",seed
+Nvidia,company,,,1045810,NVDA,"nvidia corp|nvidia corporation",seed
+Alphabet,company,,,1652044,GOOGL,"google|alphabet inc",seed
+Amazon,company,,,1018724,AMZN,"amazon.com|amazon.com inc",seed
+Meta Platforms,company,,,1326801,META,"facebook|meta",seed
+Tesla,company,,,1318605,TSLA,"tesla inc|tesla motors",seed
+Berkshire Hathaway,company,,,1067983,BRK-B,"berkshire|berkshire hathaway inc",seed
+Johnson & Johnson,company,,,200406,JNJ,"j&j|johnson and johnson",seed
+Exxon Mobil,company,,,34088,XOM,"exxon|exxonmobil|exxon mobil corp",seed
+Walmart,company,,,104169,WMT,"wal-mart|walmart inc",seed
+Procter & Gamble,company,,,80424,PG,"p&g|procter and gamble",seed
+UnitedHealth Group,company,,,731766,UNH,"unitedhealth|united health",seed
+Visa,company,,,1403161,V,"visa inc",seed
+Mastercard,company,,,1141391,MA,"mastercard inc|mastercard incorporated",seed
+Home Depot,company,,,354950,HD,"the home depot|home depot inc",seed
+Coca-Cola,company,,,21344,KO,"coca cola|the coca-cola company",seed
+PepsiCo,company,,,77476,PEP,"pepsi|pepsico inc",seed
+Chevron,company,,,93410,CVX,"chevron corp|chevron corporation",seed
+Oracle,company,,,1341439,ORCL,"oracle corp|oracle corporation",seed

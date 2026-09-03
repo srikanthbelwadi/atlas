@@ -131,3 +131,18 @@ it (see `.github/workflows/deploy-frontend.yml`'s docstring).
 
 Both the `on_user_created` admin-notification Cloud Function and the weekly
 Cloud Scheduler re-crawl are now built — see steps 10/11 above.
+
+
+## Finance pack
+
+`scripts/finance_phase0.sh` does every Google Cloud step the finance section
+needs, in order: the `finance_pack` dataset and entity crosswalk
+(`infra/finance/setup.sql`, CSV load, MERGE), a crawler rebuild and one
+`--pack finance` run, the crosswalk check (`infra/finance/xref_check.sql`),
+and an orchestrator build deployed as a **no-traffic** Cloud Run revision
+tagged `finance` with `ATLAS_PACKS_ENABLED=public,finance`. Golden runs
+(`scripts/golden_run.py`, sets in `tests/golden/`) go against the tagged
+URL; `tests/golden/public_regression.yaml` is the "did not interfere"
+check. Promote with `gcloud run services update-traffic atlas-orchestrator
+--to-latest`, then set `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED` to `"true"` in
+`frontend/apphosting.yaml`.

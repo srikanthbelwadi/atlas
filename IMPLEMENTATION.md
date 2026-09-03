@@ -277,7 +277,44 @@ reason, the literal SQL and bound parameters for every query actually
 executed, and a token/cost breakdown per model call. This is what survives
 after the live trace panel scrolls out of view.
 
-## 8. References
+## 8. Packs (the finance section)
+
+Atlas serves more than one catalog from one deployment. A **pack** is a named
+slice of the catalog that discovery never mixes with another: the original
+demo is the `public` pack (the default everywhere a pack isn't named) and
+the finance section at `/finance` is the `finance` pack. Every layer knows
+about packs, and every default keeps the public demo exactly as it was:
+
+- **OKF documents** declare `pack: finance` (or `packs: [public, finance]`
+  for a shared template like the SEC EDGAR one); no field means `public`.
+  Finance documents live under `okf-catalog/packs/finance/`.
+- **The crawler** (`backend/crawler/targets.py`) lists each dataset with its
+  packs; rows in `ard_catalog.embeddings` carry `metadata.pack`, and a
+  non-public pack's `doc_id` is suffixed `#<pack>`.
+- **Discovery** pre-filters both the `VECTOR_SEARCH` base table and the
+  hand-authored documents by pack.
+- **`POST /ask`** takes an optional `pack`; a pack not listed in
+  `ATLAS_PACKS_ENABLED` (default `public`) is refused with a 400, never
+  answered from the public catalog.
+- **The frontend** builds `/finance/*` only when
+  `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED=true`; otherwise those routes 404 and the
+  header shows no link.
+
+The finance pack adds three executor kinds beyond guarded SQL and the EDGAR
+API: `bigquery_sample_llm` (a byte-capped narrative sample themed by the
+plan-tier model, every quote verified against the sample in the check
+stage), `composite` (ordered steps over other attested computations, e.g.
+the two-source SEC reconciliation), and `sec_ratio`/`sec_edgar_annual`
+(10-K annual-fact selection and curated ratios from
+`backend/accessor/xbrl_metrics.py`, the one metric-to-tag map both the API
+and BigQuery paths share). Attested answers carry a **receipt** (template
+version, reviewer, `stale_after`, every query step, bytes, tokens, cost),
+and `POST /skills/filing-fact-check` verifies each numeric claim in a
+paragraph through attested computations only. The engineering design is at
+`/finance/design`; the demo plan is `atlas-finance-demo-plan.md` in the
+project folder.
+
+## 9. References
 
 - **[Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)** spec, [repository](https://github.com/ards-project/ard-spec).
 - **[Open Knowledge Format (OKF)](https://okf.md/spec/)** spec, [reference tooling](https://github.com/GoogleCloudPlatform/knowledge-catalog), [v0.2 trust-signals announcement](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals).
