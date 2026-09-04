@@ -41,8 +41,8 @@ export default function FinanceCatalogPage() {
             <h2 style={{ fontSize: "1.4rem", marginBottom: 6 }}>Finance pack catalog</h2>
             <p style={{ margin: 0, color: "var(--ink-dim)", fontSize: "0.9rem", maxWidth: "70ch" }}>
               Everything the finance section can discover: reviewed templates (the SQL text below is exactly what runs — the model
-              only binds parameter values) and the public BigQuery tables that stand in for a bank&apos;s complaint system, entity
-              master and fundamentals mart.{" "}
+              only binds parameter values), the public BigQuery tables that stand in for a bank&apos;s complaint system, entity
+              master and fundamentals mart, and the private internal risk mart (🔒) that only entitled accounts can query.{" "}
               <Link href="/finance" className="nav-link">
                 ← Back to asking
               </Link>
@@ -56,6 +56,15 @@ export default function FinanceCatalogPage() {
                 <span>{catalog.counts.attested} attested computations</span>
                 <span>·</span>
                 <span>{catalog.counts.tables} crawled tables</span>
+                {catalog.counts.private ? (
+                  <>
+                    <span>·</span>
+                    <span>🔒 {catalog.counts.private} private</span>
+                  </>
+                ) : null}
+                <span style={{ marginLeft: "auto", color: "var(--ink-dim)" }}>
+                  your entitlements: <span className="mono">{catalog.entitlements?.length ? catalog.entitlements.join(", ") : "none"}</span>
+                </span>
               </div>
               <CatalogTable entries={catalog.entries} />
             </>

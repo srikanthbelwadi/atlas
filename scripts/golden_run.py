@@ -9,6 +9,7 @@ Golden-question runner for the Atlas orchestrator.
 For every question: POST /ask (or /skills/filing-fact-check), collect the
 SSE trace, and check the expectations in the YAML:
   path              attested | adhoc | refusal | refusal_or_no_finance_source
+  withheld_min / withheld_none / refused: not_entitled / receipt_private   (use case D)
   source_id / source_id_in / source_prefix / forbidden_source_prefix
   params_include    subset of the bound params on the query that ran
   max_bytes_gb      bytes billed ceiling
@@ -105,6 +106,22 @@ def check(expect, events):
             pass  # the synthesis model may reshape rows; the walkthrough is the real check below
         if len(queries) < 2:
             failures.append("reconciliation ran fewer than two steps")
+    # use case D: access expectations
+    withheld = ((wt.get("access") or {}).get("withheld")) or []
+    if "withheld_min" in expect and len(withheld) < expect["withheld_min"]:
+        failures.append(f"{len(withheld)} withheld source(s) < {expect['withheld_min']}")
+    if expect.get("withheld_none") and withheld:
+        failures.append(f"unexpected withheld sources: {[w.get('source_id') for w in withheld]}")
+    if "no_query_touches" in expect:
+        for q in queries:
+            if expect["no_query_touches"].lower() in (q.get("sql") or "").lower().replace("`", ""):
+                failures.append(f"a query touched {expect['no_query_touches']}: {q.get('source_id')}")
+    if expect.get("refused") and terminal.get("refused") != expect["refused"]:
+        failures.append(f"refused={terminal.get('refused')!r}, expected {expect['refused']!r}")
+    if expect.get("receipt_private") and (terminal.get("receipt") or {}).get("visibility") != "private":
+        failures.append("receipt does not record visibility=private")
+    if expect.get("receipt_private") and not (terminal.get("receipt") or {}).get("unlocked_by"):
+        failures.append("receipt does not record the entitlement that unlocked it")
     if "kind" in expect and (terminal.get("visualization") or {}).get("kind") != expect["kind"]:
         failures.append(f"viz kind {(terminal.get('visualization') or {}).get('kind')!r} != {expect['kind']!r}")
     if "claims_min" in expect:

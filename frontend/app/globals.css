@@ -429,6 +429,21 @@ button {
 .trust-chip.unverified { background: var(--danger-soft); color: var(--danger); }
 .trust-chip.stale { background: var(--accent-soft); color: var(--accent); }
 .trust-chip.draft { background: var(--surface-2); color: var(--ink-dim); }
+.trust-chip.private { background: var(--navy-soft, var(--surface-2)); color: var(--navy); }
+.trust-chip.private.locked { background: var(--danger-soft); color: var(--danger); }
+
+/* finance pack, use case D: restricted-sources card under a refusal */
+.access-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 14px 18px;
+  font-size: 0.88rem;
+}
+.access-card.unlocked { border-left-color: var(--accent-2); }
+.access-card ul { margin: 8px 0 0; padding-left: 18px; }
+.access-card li { margin: 2px 0; }
 
 .receipt {
   border: 1px solid var(--border);

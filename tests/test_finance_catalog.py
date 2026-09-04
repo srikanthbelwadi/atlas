@@ -102,10 +102,14 @@ def test_pack_flag_defaults_to_public_only(monkeypatch):
 
 
 def test_crawler_targets_keep_the_public_fourteen():
-    public = [(p, d) for p, d, pk in targets.targets_for("public")]
+    public = [(p, d) for p, d, pk, _a in targets.targets_for("public")]
     assert len(public) == 14
-    finance = {d for _, d, _ in targets.targets_for("finance")}
-    assert {"cfpb_complaints", "fdic_banks", "sec_quarterly_financials", "bls"} <= finance
+    assert all(not a for _, _, _, a in targets.targets_for("public")), "no public-pack dataset may be private"
+    finance = {d for _, d, _, _ in targets.targets_for("finance")}
+    assert {"cfpb_complaints", "fdic_banks", "sec_quarterly_financials", "bls", "finance_demo"} <= finance
+    private = {d: a for _, d, _, a in targets.targets_for("finance") if a}
+    assert private == {"finance_demo": {"visibility": "private", "entitlement": "finance.internal"}}
+    assert "finance_demo_raw" not in finance, "raw loads are never catalogued"
 
 
 def test_public_planner_prompt_gets_no_glossary():
@@ -247,3 +251,87 @@ def test_split_companies_and_template_cap():
     assert g.template_byte_cap({"cap_bytes": 1}) == g.TEMPLATE_BYTE_CAP
     assert g.template_byte_cap({"cap_bytes": 10**12}) == g.TEMPLATE_BYTE_CAP_MAX
     assert g.template_byte_cap({"cap_bytes": 30 * 1024**3}) == 30 * 1024**3
+
+
+# --- use case D: private sources and entitlements -------------------------
+
+from backend.orchestrator import access  # noqa: E402
+
+PRIVATE_TEMPLATES = {"ac.hc_default_rate_by_segment", "ac.hc_bureau_history_vs_default",
+                     "ac.hc_installment_delinquency_vintage", "ac.paysim_structuring_pattern"}
+
+
+def private_docs():
+    return [d for d in finance_docs() if d.visibility == "private"]
+
+
+def test_private_docs_are_marked_and_confined_to_finance_demo():
+    docs = private_docs()
+    assert {d.id for d in docs if d.type == "AttestedComputation"} == PRIVATE_TEMPLATES
+    assert len([d for d in docs if d.type == "Table"]) == 4
+    for d in docs:
+        assert d.access.get("entitlement") == "finance.internal", d.id
+        assert d.governance()["visibility"] == "private" and d.governance()["entitlement"] == "finance.internal"
+        for src in (d.sources or [d.source]):
+            assert (src["project"], src["dataset"]) == ("atlas-ard-okf", "finance_demo"), f"{d.id} reads outside finance_demo"
+    # and nothing public reads the private dataset
+    for d in finance_docs() + okf_loader.load_all(CATALOG, pack="public"):
+        if d.visibility != "private":
+            for src in (d.sources or [d.source]):
+                assert src.get("dataset") != "finance_demo", f"public doc {d.id} reads the private dataset"
+
+
+def test_private_dataset_registry_and_sql_scan():
+    assert access.private_datasets().get("atlas-ard-okf.finance_demo") == "finance.internal"
+    access.check_sql_references("SELECT 1 FROM `bigquery-public-data.cfpb_complaints.complaint_database`", [])
+    access.check_sql_references("SELECT 1 FROM `atlas-ard-okf.finance_demo.loan_applications`", ["finance.internal"])
+    with pytest.raises(access.AccessDenied):
+        access.check_sql_references("SELECT 1 FROM `atlas-ard-okf.finance_demo.loan_applications`", [])
+    with pytest.raises(access.AccessDenied):
+        access.check_sql_references("select * from atlas-ard-okf . finance_demo.payment_transactions", ["other"])
+
+
+def test_split_candidates_withholds_private_without_entitlement():
+    cands = [
+        {"source_id": "ac.hc_default_rate_by_segment", "title": "private t", "score": 0.9, "visibility": "private", "entitlement": "finance.internal", "description": "secret"},
+        {"source_id": "ac.cfpb_complaints_trend", "title": "public t", "score": 0.7},
+    ]
+    visible, withheld = access.split_candidates(cands, [])
+    assert [c["source_id"] for c in visible] == ["ac.cfpb_complaints_trend"]
+    assert withheld == [{"source_id": "ac.hc_default_rate_by_segment", "title": "private t", "entitlement": "finance.internal", "score": 0.9}]
+    assert "description" not in withheld[0]
+    visible, withheld = access.split_candidates(cands, ["finance.internal"])
+    assert len(visible) == 2 and withheld == []
+
+
+def test_fetch_stage_refuses_private_template_without_entitlement():
+    doc = okf_loader.load_by_id("ac.hc_default_rate_by_segment", CATALOG)
+    with pytest.raises(access.AccessDenied):
+        access.assert_may_query(doc, [])
+    access.assert_may_query(doc, ["finance.internal"])
+    access.assert_may_query(okf_loader.load_by_id("ac.cfpb_complaints_trend", CATALOG), [])
+
+
+def test_private_receipt_names_the_entitlement():
+    doc = okf_loader.load_by_id("ac.paysim_structuring_pattern", CATALOG)
+    receipt = pipeline.build_receipt(doc, {"queries_executed": [], "token_usage": {}}, 0, None)
+    assert receipt["visibility"] == "private" and receipt["unlocked_by"] == "finance.internal"
+    assert receipt["restricted_to"] is None or isinstance(receipt["restricted_to"], str)
+    public = pipeline.build_receipt(okf_loader.load_by_id("ac.cfpb_complaints_trend", CATALOG), {"queries_executed": [], "token_usage": {}}, 0, None)
+    assert public["visibility"] == "public" and public["unlocked_by"] is None
+
+
+def test_withheld_answer_is_a_refusal():
+    ans = pipeline._withheld_answer("our default rate", [{"source_id": "x", "title": "x", "entitlement": "finance.internal", "score": 0.9}])
+    assert ans["refused"] == "not_entitled" and ans["citations"] == [] and "finance.internal" in ans["narrative"]
+
+
+def test_private_synth_columns_cover_private_setup_sql():
+    """The synthetic generator must emit every raw column private_setup.sql
+    reads, or the load works on Kaggle files and fails on synthetic ones."""
+    sql = open(os.path.join(ROOT, "infra", "finance", "private_setup.sql")).read()
+    synth = open(os.path.join(ROOT, "scripts", "finance_private_synth.py")).read()
+    raw_cols = set(re.findall(r"CAST\((-?)([A-Za-z_]+) AS", sql))
+    names = {c for _, c in raw_cols} | set(re.findall(r"WHEN ([A-Z_]+) <", sql)) | {"DAYS_INSTALMENT"}
+    missing = {c for c in names if f'"{c}"' not in synth and c not in ("step", "type", "amount")}
+    assert not missing, f"synthetic generator lacks columns {missing}"

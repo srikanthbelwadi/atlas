@@ -73,12 +73,23 @@ function notesFor(stage: string, events: TraceEvent[]): Note[] {
     const last = forStage[forStage.length - 1];
     if (last.event !== "discover.done") return [];
     const candidates = (last.data.candidates as { title: string; score: number }[]) || [];
-    if (!candidates.length) return [{ text: "No matching sources found" }];
+    const withheld = (last.data.withheld as { title: string; entitlement: string | null }[]) || [];
+    const notes: Note[] = [];
+    if (withheld.length) {
+      const needs = Array.from(new Set(withheld.map((w) => w.entitlement).filter(Boolean))).join(", ");
+      notes.push({
+        text: `${withheld.length} private source${withheld.length === 1 ? "" : "s"} withheld — this account lacks the ${needs || "required"} entitlement${
+          last.data.top_is_withheld ? "; the best match is among them, so Atlas will not answer from a public stand-in" : ""
+        }`,
+      });
+    }
+    if (!candidates.length) return notes.length ? notes : [{ text: "No matching sources found" }];
     const top = candidates
       .slice(0, 3)
       .map((c) => `${c.title} (${(c.score ?? 0).toFixed(2)})`)
       .join(", ");
-    return [{ text: `${candidates.length} candidate source${candidates.length === 1 ? "" : "s"} considered — top matches: ${top}` }];
+    notes.push({ text: `${candidates.length} candidate source${candidates.length === 1 ? "" : "s"} considered — top matches: ${top}` });
+    return notes;
   }
 
   if (stage === "synthesize") {

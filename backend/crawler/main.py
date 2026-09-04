@@ -63,7 +63,7 @@ def ensure_catalog_table() -> None:
     client().query(ddl).result()
 
 
-def _describe_table(project: str, dataset: str, table_row, pack: str = "public") -> tuple[str, dict]:
+def _describe_table(project: str, dataset: str, table_row, pack: str = "public", access: dict | None = None) -> tuple[str, dict]:
     """Returns (embedding_text, metadata_dict) for one INFORMATION_SCHEMA.TABLES row."""
     table_name = table_row.table_name
     full_ref = f"{project}.{dataset}.{table_name}"
@@ -114,6 +114,18 @@ def _describe_table(project: str, dataset: str, table_row, pack: str = "public")
         "large_table": bool(size_gb and size_gb > LARGE_TABLE_THRESHOLD_GB),
         "pack": pack,
     }
+    if access and access.get("visibility") == "private":
+        # A private table is catalogued like any other, but discovery only
+        # offers it to users holding the entitlement, and the embedded text
+        # says so — "PRIVATE" in the title is what makes "our own data"
+        # questions land here rather than on a public stand-in.
+        metadata["visibility"] = "private"
+        metadata["entitlement"] = access.get("entitlement")
+        metadata["title"] = f"{title} (private)"
+        description = f"PRIVATE table (internal data; entitlement {access.get('entitlement')}). " + description
+        metadata["description"] = description[:4000]
+    else:
+        metadata["visibility"] = "public"
     return description, metadata
 
 
@@ -130,7 +142,7 @@ def _list_tables(project: str, dataset: str):
         return list(client().query(fallback_sql).result(timeout=30))
 
 
-def crawl_dataset(project: str, dataset: str, pack: str = "public") -> int:
+def crawl_dataset(project: str, dataset: str, pack: str = "public", access: dict | None = None) -> int:
     """Catalogues one dataset into one pack. A dataset that can't be read
     under its listed name is retried under each DATASET_ALIASES entry (the
     `fdic_banks` / `fdic` naming question), and the name that resolved is
@@ -155,7 +167,7 @@ def crawl_dataset(project: str, dataset: str, pack: str = "public") -> int:
     rows_to_upsert = []
     for t in tables:
         try:
-            text, metadata = _describe_table(project, resolved, t, pack)
+            text, metadata = _describe_table(project, resolved, t, pack, access)
         except Exception as exc:  # noqa: BLE001 — one bad table shouldn't fail the whole dataset
             print(f"[crawler] skipping {project}.{resolved}.{t.table_name}: {exc}")
             continue
@@ -210,13 +222,13 @@ def _upsert(rows: list[tuple[str, list[float], dict]]) -> None:
     client().delete_table(tmp_table, not_found_ok=True)
 
 
-def prune(active_targets: list[tuple[str, str, str]]) -> None:
+def prune(active_targets: list[tuple[str, str, str, dict]]) -> None:
     """Removes ard_catalog.embeddings rows for datasets no longer in
     CRAWL_TARGETS (per pack). Run explicitly with --prune; not part of the
     normal scheduled crawl, so removing a dataset from targets.py doesn't
     silently drop discovery coverage until someone means it to."""
     keep = []
-    for p, d, pack in active_targets:
+    for p, d, pack, _access in active_targets:
         names = (d,) + DATASET_ALIASES.get(d, ())
         for n in names:
             suffix = "" if pack == "public" else f"#{pack}"
@@ -237,8 +249,8 @@ def main():
     ensure_catalog_table()
     targets = targets_for(args.pack)
     total = 0
-    for project, dataset, pack in targets:
-        total += crawl_dataset(project, dataset, pack)
+    for project, dataset, pack, access in targets:
+        total += crawl_dataset(project, dataset, pack, access)
     if args.prune:
         prune(targets_for(None))
     print(f"[crawler] done — {total} tables catalogued across {len(targets)} dataset/pack targets" + (f" (pack={args.pack})" if args.pack else ""))

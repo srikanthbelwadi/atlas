@@ -23,10 +23,18 @@ delete its existing `ard_catalog.embeddings` rows — run `main.py --prune` to
 also drop rows for datasets no longer in this list.
 """
 
-# (project, dataset, packs). Project is almost always "bigquery-public-data";
-# kept explicit so a non-public source (e.g. a licensed Analytics Hub
-# dataset, or a customer's own project) can be added the same way later.
-CRAWL_TARGETS: list[tuple[str, str, tuple[str, ...]]] = [
+# (project, dataset, packs[, access]). Project is almost always
+# "bigquery-public-data"; kept explicit so a non-public source (a licensed
+# Analytics Hub dataset, a customer's own project) is added the same way.
+# The optional fourth element marks a PRIVATE dataset: every table it
+# catalogues carries `visibility: private` and the entitlement a user must
+# hold before discovery will show it (backend/orchestrator/access.py). The
+# crawler itself reads it through the same service account either way —
+# BigQuery IAM decides what the crawler can see, Atlas entitlements decide
+# which users may be offered it.
+PRIVATE_FINANCE = {"visibility": "private", "entitlement": "finance.internal"}
+
+CRAWL_TARGETS: list[tuple] = [
     # --- public pack: the original demo catalog, unchanged ---
     ("bigquery-public-data", "covid19_open_data", ("public",)),
     ("bigquery-public-data", "census_bureau_acs", ("public",)),
@@ -48,6 +56,11 @@ CRAWL_TARGETS: list[tuple[str, str, tuple[str, ...]]] = [
     ("bigquery-public-data", "fdic_banks", ("finance",)),               # entity master + peer ratios
     ("bigquery-public-data", "sec_quarterly_financials", ("finance",)), # fundamentals warehouse (XBRL)
     ("bigquery-public-data", "sec_failure_to_deliver", ("finance",)),   # settlement-exceptions ledger
+    # --- finance pack, use case D: the bank's OWN data — a private dataset in
+    #     our project (infra/finance/private_setup.sql). Same crawler, same
+    #     executor; only IAM and the entitlement differ. finance_demo_raw is
+    #     deliberately not listed: raw loads are never catalogued.
+    ("atlas-ard-okf", "finance_demo", ("finance",), PRIVATE_FINANCE),       # internal risk mart: credit book + payments ledger
 ]
 
 # Google's public-datasets-pipelines repo defines the FDIC dataset as `fdic`
@@ -66,12 +79,15 @@ DATASET_ALIASES: dict[str, tuple[str, ...]] = {
 LARGE_TABLE_THRESHOLD_GB = 50
 
 
-def targets_for(pack: str | None) -> list[tuple[str, str, str]]:
-    """Flattens CRAWL_TARGETS into (project, dataset, pack) triples, one per
-    pack membership, optionally restricted to a single pack."""
+def targets_for(pack: str | None) -> list[tuple[str, str, str, dict]]:
+    """Flattens CRAWL_TARGETS into (project, dataset, pack, access) tuples, one
+    per pack membership, optionally restricted to a single pack. `access` is
+    {} for public datasets."""
     out = []
-    for project, dataset, packs in CRAWL_TARGETS:
+    for entry in CRAWL_TARGETS:
+        project, dataset, packs = entry[0], entry[1], entry[2]
+        access = entry[3] if len(entry) > 3 else {}
         for p in packs:
             if pack is None or p == pack:
-                out.append((project, dataset, p))
+                out.append((project, dataset, p, access))
     return out

@@ -106,6 +106,8 @@ def _search_bq_catalog(question_embedding: list[float], top_k: int, pack: str = 
             "trust": meta.get("trust", "machine-confirmed"),
             "type": meta.get("type", "Table"),
             "pack": meta.get("pack", DEFAULT_PACK),
+            "visibility": meta.get("visibility", "public"),
+            "entitlement": meta.get("entitlement"),
             "score": 1 - float(row.distance),
         })
     return out
@@ -146,6 +148,8 @@ def _search_okf_catalog(question_embedding: list[float], top_k: int, pack: str =
             "trust": doc.trust,
             "type": doc.type,
             "pack": pack,
+            "visibility": doc.visibility,
+            "entitlement": doc.access.get("entitlement") if doc.visibility == "private" else None,
             "score": score,
         })
     candidates.sort(key=lambda c: c["score"], reverse=True)
@@ -155,7 +159,9 @@ def _search_okf_catalog(question_embedding: list[float], top_k: int, pack: str =
 def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
     """Returns merged, score-sorted candidates from the crawled BigQuery
     catalog and the hand-authored OKF catalog for one pack, deduplicated by
-    source_id."""
+    source_id. Every candidate carries `visibility` / `entitlement`; the
+    caller (pipeline.run) splits them into visible and withheld for the
+    user — see access.split_candidates."""
     question_embedding = llm.embed(question)
     k = packs.top_k(pack, TOP_K)
     candidates = _search_bq_catalog(question_embedding, k, pack) + _search_okf_catalog(question_embedding, k, pack)
@@ -164,7 +170,13 @@ def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
     for c in candidates:
         existing = seen.get(c["source_id"])
         if existing is None or c["score"] > existing["score"]:
+            # a private marking from either half wins the merge — the
+            # crawled row and the hand-authored doc describe the same table
+            if existing is not None and existing.get("visibility") == "private":
+                c = {**c, "visibility": "private", "entitlement": c.get("entitlement") or existing.get("entitlement")}
             seen[c["source_id"]] = c
+        elif c.get("visibility") == "private" and existing.get("visibility") != "private":
+            existing["visibility"], existing["entitlement"] = "private", c.get("entitlement")
 
     ranked = sorted(seen.values(), key=lambda c: c["score"], reverse=True)
     return ranked[:k]

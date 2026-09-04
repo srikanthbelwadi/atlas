@@ -312,8 +312,9 @@ version, reviewer, `stale_after`, every query step, bytes, tokens, cost),
 and `POST /skills/filing-fact-check` verifies each numeric claim in a
 paragraph through attested computations only. The engineering design is at
 `/finance/design`; the as-built implementation document (catalog inventory,
-executors, golden results, operations, skills index and the internal-data
-recommendation) is `FINANCE-IMPLEMENTATION.md` (also `/finance/implementation`);
+executors, golden results, operations, skills index and use case D — the
+private internal risk mart with entitlement-based access) is
+`FINANCE-IMPLEMENTATION.md` (also `/finance/implementation`);
 agent skills live in `skills/finance/`; the demo plan is
 `atlas-finance-demo-plan.md` in the project folder.
 

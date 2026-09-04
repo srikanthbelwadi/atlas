@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { CatalogEntry } from "@/lib/types";
-import TrustChip from "@/components/TrustChip";
+import TrustChip, { VisibilityChip } from "@/components/TrustChip";
 
-type Filter = "all" | "AttestedComputation" | "Table";
+type Filter = "all" | "AttestedComputation" | "Table" | "private";
 
 function fmtSize(e: CatalogEntry): string {
   if (e.size_gb != null) return `${e.size_gb} GB`;
@@ -21,15 +21,21 @@ export default function CatalogTable({ entries }: { entries: CatalogEntry[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const shown = entries
-    .filter((e) => filter === "all" || e.type === filter)
+    .filter((e) => filter === "all" || (filter === "private" ? e.visibility === "private" : e.type === filter))
     .sort((a, b) => (a.type === b.type ? a.title.localeCompare(b.title) : a.type === "AttestedComputation" ? -1 : 1));
 
   return (
     <div>
       <div className="filter-row" role="group" aria-label="Filter">
-        {(["all", "AttestedComputation", "Table"] as Filter[]).map((f) => (
+        {(["all", "AttestedComputation", "Table", "private"] as Filter[]).map((f) => (
           <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
-            {f === "all" ? `All (${entries.length})` : f === "AttestedComputation" ? "Attested computations" : "Tables"}
+            {f === "all"
+              ? `All (${entries.length})`
+              : f === "AttestedComputation"
+                ? "Attested computations"
+                : f === "Table"
+                  ? "Tables"
+                  : `Private (${entries.filter((e) => e.visibility === "private").length})`}
           </button>
         ))}
       </div>
@@ -71,6 +77,7 @@ function Row({ entry, open, onToggle }: { entry: CatalogEntry; open: boolean; on
         <td>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             <TrustChip trust={entry.trust} />
+            <VisibilityChip visibility={entry.visibility} entitlement={entry.entitlement} accessible={entry.accessible} />
             {entry.stale && <span className="trust-chip stale">stale</span>}
             {entry.lifecycle === "draft" && <span className="trust-chip draft">draft</span>}
           </div>
@@ -85,6 +92,15 @@ function Row({ entry, open, onToggle }: { entry: CatalogEntry; open: boolean; on
         <tr>
           <td colSpan={6} style={{ padding: 0 }}>
             <div className="catalog-detail">
+              {entry.visibility === "private" && (
+                <p style={{ margin: "0 0 10px", fontSize: "0.84rem", color: entry.accessible ? "var(--accent-2)" : "var(--danger)" }}>
+                  🔒 Private source · entitlement <span className="mono">{entry.entitlement || "—"}</span>
+                  {entry.restricted_to ? ` · restricted to: ${entry.restricted_to}` : ""}
+                  {entry.accessible
+                    ? " · your account holds this entitlement."
+                    : " · your account does not hold it: discovery withholds this source and its SQL is not shown."}
+                </p>
+              )}
               <p style={{ margin: "0 0 10px", fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{entry.description}</p>
               {entry.parameters && entry.parameters.length > 0 && (
                 <div style={{ marginBottom: 10 }}>

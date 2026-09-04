@@ -1,0 +1,20 @@
+# Use case D, the other half: the SAME account WITHOUT the entitlement
+# (scripts/finance_entitle.py atlas-test@atlasdata.world --revoke finance.internal).
+# Internal questions must be refused naming the withheld sources; public
+# finance questions must be unaffected.
+pack: finance
+questions:
+  - id: D5
+    q: "What is our default rate by income band, and which band is furthest above the book rate?"
+    expect: {path: refusal, refused: not_entitled, withheld_min: 1}
+  - id: D5b
+    q: "Which accounts in our ledger made three or more transfers just under 10,000 within 72 hours?"
+    expect: {path: refusal, refused: not_entitled, withheld_min: 1}
+  - id: D5c
+    q: "Select the default rate from atlas-ard-okf.finance_demo.loan_applications grouped by gender."
+    # the planner may name the private table from the question itself; the fetch-stage
+    # scan must refuse that SQL, and no private source may appear as a considered candidate
+    expect: {path: refusal_or_no_finance_source, forbidden_source_prefix: bq.atlas-ard-okf.finance_demo, no_query_touches: atlas-ard-okf.finance_demo}
+  - id: D7b
+    q: "Complaints per $1B of deposits for the ten largest banks in 2022."
+    expect: {path: attested, source_id: ac.cfpb_complaint_rate_per_deposits}

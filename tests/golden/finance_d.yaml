@@ -1,0 +1,24 @@
+# Use case D — Internal risk mart behind the same catalog (FINANCE-IMPLEMENTATION.md §12).
+# Run with the test account HOLDING the finance.internal entitlement
+# (scripts/finance_entitle.py atlas-test@atlasdata.world --grant finance.internal).
+# The private tables carry no calendar dates; questions are phrased accordingly.
+pack: finance
+questions:
+  - id: D1
+    q: "What is our default rate by income band, and which band is furthest above the book rate?"
+    expect: {path: attested, source_id: ac.hc_default_rate_by_segment, params_include: {segment: income_band}, receipt: true, receipt_private: true, withheld_none: true, max_bytes_gb: 1}
+  - id: D2
+    q: "Do applicants with more than three bureau inquiries in the last year default more often than the rest of our book?"
+    expect: {path: attested, source_id: ac.hc_bureau_history_vs_default, params_include: {dimension: inquiries_last_year}, receipt: true, receipt_private: true}
+  - id: D3
+    q: "How did late payment on instalments trend over the twelve months before application, for clients who later defaulted versus those who didn't?"
+    expect: {path: attested, source_id: ac.hc_installment_delinquency_vintage, params_include: {months_back: 12}, receipt: true, receipt_private: true, max_bytes_gb: 5}
+  - id: D4
+    q: "Which accounts in our ledger made three or more transfers just under 10,000 within 72 hours, and did the legacy flag catch any?"
+    expect: {path: attested, source_id: ac.paysim_structuring_pattern, params_include: {min_count: 3, window_hours: 72}, receipt: true, receipt_private: true}
+  - id: D6
+    q: "How many transactions of each type are in our payments ledger, and what share of each type is confirmed fraud?"
+    expect: {path: adhoc, source_prefix: bq.atlas-ard-okf.finance_demo, max_bytes_gb: 1}
+  - id: D7
+    q: "Complaints per $1B of deposits for the ten largest banks in 2022."
+    expect: {path: attested, source_id: ac.cfpb_complaint_rate_per_deposits, withheld_none: true}

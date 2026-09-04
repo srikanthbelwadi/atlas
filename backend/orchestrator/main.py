@@ -34,7 +34,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from firebase_admin import auth as firebase_auth, credentials, firestore as fb_firestore, initialize_app
 
-from . import packs, pipeline
+from . import access, packs, pipeline
 from .skills import filing_fact_check
 from ..accessor import okf_loader
 
@@ -84,10 +84,15 @@ def require_approved_user(authorization: str | None = Header(default=None)) -> d
             "created_at": fb_firestore.SERVER_TIMESTAMP,
         })
         if preapproved:
-            return {"uid": uid, "email": email}
+            return {"uid": uid, "email": email, "entitlements": []}
         raise HTTPException(status_code=403, detail="Account created — waiting on admin approval.")
 
     status = snap.get("status")
+    # Data entitlements (finance pack, use case D): the list of private-data
+    # grants on the user record. Approval says "may use Atlas"; an
+    # entitlement says "may be offered this private source". Missing = none.
+    data = snap.to_dict() or {}
+    entitlements = sorted({str(e) for e in (data.get("entitlements") or []) if e})
     if status != "approved":
         # Covers a preapproved email that signed in (and got its doc created
         # as "pending") before ATLAS_PREAPPROVED_EMAILS included it — flips
@@ -95,10 +100,10 @@ def require_approved_user(authorization: str | None = Header(default=None)) -> d
         # waiting for an admin who was never going to review it.
         if preapproved:
             doc_ref.set({"status": "approved"}, merge=True)
-            return {"uid": uid, "email": email}
+            return {"uid": uid, "email": email, "entitlements": entitlements}
         raise HTTPException(status_code=403, detail=f"Account status: {status}. Waiting on admin approval.")
 
-    return {"uid": uid, "email": email}
+    return {"uid": uid, "email": email, "entitlements": entitlements}
 
 
 def require_admin(authorization: str | None = Header(default=None)) -> dict:
@@ -135,7 +140,7 @@ async def ask(request: Request, authorization: str | None = Header(default=None)
     pack = _resolve_pack(body)
 
     async def event_stream():
-        async for evt in pipeline.run(question, user["uid"], pack):
+        async for evt in pipeline.run(question, user["uid"], pack, user.get("entitlements")):
             yield {"event": evt["event"], "data": _json(evt["data"])}
 
     return EventSourceResponse(event_stream())
@@ -179,14 +184,16 @@ def pack_catalog(pack: str, user: dict = Depends(require_approved_user)):
         raise HTTPException(status_code=404, detail=f"Unknown or disabled pack: {pack}")
     cached = _catalog_cache.get(pack)
     if cached and time.monotonic() - cached[0] < 300:
-        return cached[1]
+        return _with_access(cached[1], user)
 
     entries = []
     for doc in okf_loader.load_all(pack=pack):
         runtime = (doc.computation or {}).get("runtime", {}) if doc.computation else {}
+        private = access.is_private(doc)
         entries.append({
             "id": doc.id, "title": doc.title, "description": doc.description, "type": doc.type, "kind": doc.source.get("kind"),
             "executor": doc.executor, "trust": doc.trust, **doc.governance(),
+            "restricted_to": (doc.access or {}).get("restricted_to") if private else None,
             "parameters": [{"name": p.get("name"), "type": p.get("type", "STRING"), "required": p.get("required", True),
                             "description": p.get("description", "")} for p in runtime.get("parameters", [])],
             "sql": runtime.get("sql"), "body": doc.body, "tags": doc.tags, "sources": doc.sources or [doc.source],
@@ -219,15 +226,35 @@ def pack_catalog(pack: str, user: dict = Depends(require_approved_user)):
                 "pack": pack, "reviewer": None, "reviewed_on": None, "stale_after": None, "stale": False, "lifecycle": "active",
                 "version": None, "row_count": meta.get("row_count"), "size_gb": meta.get("size_gb"), "large_table": meta.get("large_table"),
                 "source": meta.get("source"), "updated_at": str(row.updated_at),
+                "visibility": meta.get("visibility", "public"), "entitlement": meta.get("entitlement"),
             })
     except Exception as exc:  # noqa: BLE001 — catalog page still shows the OKF half if BigQuery is unreachable
         print(f"[catalog] crawled rows unavailable for pack {pack}: {exc}")
 
     result = {"pack": packs.info(pack), "entries": entries,
               "counts": {"attested": sum(1 for e in entries if e["type"] == "AttestedComputation"),
-                         "tables": sum(1 for e in entries if e["type"] == "Table")}}
+                         "tables": sum(1 for e in entries if e["type"] == "Table"),
+                         "private": sum(1 for e in entries if e.get("visibility") == "private")}}
     _catalog_cache[pack] = (time.monotonic(), result)
-    return result
+    return _with_access(result, user)
+
+
+def _with_access(catalog: dict, user: dict) -> dict:
+    """The catalog is cached per pack; whether *this* user may query each
+    private entry is stamped on the way out. Private entries are listed for
+    everyone (a reviewer should see that restricted sources exist) but their
+    SQL and body are stripped for users without the entitlement."""
+    ents = set(user.get("entitlements") or [])
+    entries = []
+    for e in catalog["entries"]:
+        ok = access.may_see(e, ents)
+        row = {**e, "accessible": ok}
+        if not ok:
+            row["sql"] = None
+            row["body"] = None
+            row["parameters"] = []
+        entries.append(row)
+    return {**catalog, "entries": entries, "entitlements": sorted(ents)}
 
 
 def _json(data: dict) -> str:
@@ -253,6 +280,38 @@ def approve_user(uid: str, admin: dict = Depends(require_admin)):
 def reject_user(uid: str, admin: dict = Depends(require_admin)):
     _db.collection("users").document(uid).set({"status": "rejected"}, merge=True)
     return {"ok": True}
+
+
+@app.get("/admin/entitlements")
+def list_entitlements(admin: dict = Depends(require_admin)):
+    """Every entitlement any private catalog document names, with the
+    sources behind it — what the /admin toggle offers."""
+    by_ent: dict[str, list[str]] = {}
+    for doc in okf_loader.load_all():
+        need = access.required_entitlement(doc)
+        if need:
+            by_ent.setdefault(need, []).append(doc.id)
+    for ds, need in access.private_datasets().items():
+        if need:
+            by_ent.setdefault(need, [])
+            if ds not in by_ent[need]:
+                by_ent[need].append(ds)
+    return {"entitlements": [{"id": k, "sources": sorted(v)} for k, v in sorted(by_ent.items())]}
+
+
+@app.post("/admin/users/{uid}/entitlements")
+async def set_entitlements(uid: str, request: Request, admin: dict = Depends(require_admin)):
+    """Replace the user's entitlement list. Body: {"entitlements": ["finance.internal"]}.
+    Takes effect on the user's next request — there is no session cache."""
+    body = await request.json()
+    ents = sorted({str(e).strip() for e in (body.get("entitlements") or []) if str(e).strip()})
+    known = {e["id"] for e in list_entitlements(admin)["entitlements"]}
+    unknown = [e for e in ents if e not in known]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown entitlement(s): {', '.join(unknown)}")
+    _db.collection("users").document(uid).set({"entitlements": ents, "entitlements_updated_by": admin["email"],
+                                               "entitlements_updated_at": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+    return {"ok": True, "entitlements": ents}
 
 
 @app.get("/admin/usage/{uid}")

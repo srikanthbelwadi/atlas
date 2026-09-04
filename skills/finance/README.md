@@ -15,7 +15,10 @@ routing, receipts) rather than re-implementing any of it.
 | [`conduct-outcome-monitor`](conduct-outcome-monitor/SKILL.md) | A · Consumer Duty / UDAAP outcome check by cohort | `ac.cfpb_outcome_gap_by_tag`, `ac.cfpb_timely_response_rate` |
 | [`filing-fact-check`](filing-fact-check/SKILL.md) | B · verify every figure in a paragraph against SEC filings | `POST /skills/filing-fact-check` → `ac.sec_fact_reconcile`, `ac.sec_ratio_by_year` |
 | [`peer-benchmark`](peer-benchmark/SKILL.md) | B · compare a bank with a size-defined peer set, definition named | `ac.fdic_peer_ratios`, `ac.sec_ratio_by_year`, `ac.entity_resolve` |
-| [`receipt-to-audit-pack`](receipt-to-audit-pack/SKILL.md) | A+B · turn an answer's receipt + walkthrough into a model-risk artefact | any attested answer |
+| [`credit-portfolio-monitor`](credit-portfolio-monitor/SKILL.md) | D · portfolio-risk review over the bank's own loan book (private) | `ac.hc_default_rate_by_segment`, `ac.hc_bureau_history_vs_default`, `ac.hc_installment_delinquency_vintage` |
+| [`payments-structuring-screen`](payments-structuring-screen/SKILL.md) | D · structuring screen over the bank's own payments ledger (private) | `ac.paysim_structuring_pattern` |
+| [`private-data-access-check`](private-data-access-check/SKILL.md) | D · which private sources this account can query, with a live enforcement check | `GET /packs/finance/catalog`, any private template |
+| [`receipt-to-audit-pack`](receipt-to-audit-pack/SKILL.md) | A+B+D · turn an answer's receipt + walkthrough into a model-risk artefact | any attested answer |
 | [`attested-computation-author`](attested-computation-author/SKILL.md) | platform · draft a new reviewed template from a repeated ad-hoc question | catalog + walkthroughs |
 
 ## Conventions shared by every skill
@@ -35,6 +38,13 @@ routing, receipts) rather than re-implementing any of it.
 - **Vintage.** The BigQuery mirrors are dated (CFPB to 2023-03-23, SEC bulk
   to fiscal 2019; the EDGAR API is current). Skills default their windows
   accordingly and print the vintage line the receipt carries.
+- **Private data (use case D).** Sources with `visibility: private` need the
+  entitlement they name (`finance.internal` today). A skill checks
+  `GET /packs/finance/catalog` → `entitlements` before planning on them,
+  treats `guardrail.blocked {code: not_entitled}` / `answer.refused ==
+  "not_entitled"` as a final answer to report (with
+  `answer.access.withheld`), and never rephrases a question to reach
+  private data through a public stand-in.
 - **Budget.** A skill states its expected spend up front (sum of the
   templates' `cost_profile.expected_bytes` at $6.25/TiB plus model calls)
   and stops if a `guardrail.blocked` event arrives.

@@ -1,8 +1,8 @@
 # Atlas Finance Pack — Implementation
 
-Status: live at [atlasdata.world/finance](https://atlasdata.world/finance) since 3 September 2026 · golden sets 22/22 (public 10, A 6, B 6) · code in [`srikanthbelwadi/atlas`](https://github.com/srikanthbelwadi/atlas) `main`.
+Status: live at [atlasdata.world/finance](https://atlasdata.world/finance) since 3 September 2026 · use cases A, B live (golden 22/22: public 10, A 6, B 6) · **use case D (private internal data) built 4 September 2026, awaiting its data load, crawl and golden run** (§12) · code in [`srikanthbelwadi/atlas`](https://github.com/srikanthbelwadi/atlas) `main`.
 
-This document describes what was built for the finance section, as built. The plan it implements is `atlas-finance-demo-plan.md` (use cases, data selection) and the design it follows is [`FINANCE-DESIGN.md`](https://github.com/srikanthbelwadi/atlas/blob/main/frontend/public/FINANCE-DESIGN.md) (also at `/finance/design`). Sections 12–13 cover what the pack does *not* yet demonstrate — internal enterprise data — and the recommended way to add it.
+This document describes what was built for the finance section, as built. The plan it implements is `atlas-finance-demo-plan.md` (use cases, data selection) and the design it follows is [`FINANCE-DESIGN.md`](https://github.com/srikanthbelwadi/atlas/blob/main/frontend/public/FINANCE-DESIGN.md) (also at `/finance/design`). Section 12 covers the internal-enterprise-data use case D — why A and B could not demonstrate it, and what was built to.
 
 ## 1. What the finance pack is
 
@@ -10,6 +10,7 @@ A second catalog inside the same Atlas deployment, isolated from the public demo
 
 - **A · Complaint & conduct intelligence** — the CFPB complaint database as a bank's complaint case-management system, joined to FDIC institutions for peer normalisation; five reviewed templates including narrative theming with verified quotes.
 - **B · Filing-grounded fact-check & peer benchmark** — SEC EDGAR (API) and the SEC Financial Statement Data Sets (BigQuery) as a fundamentals warehouse, FDIC ratios as regulatory peer data; a two-source reconciliation, curated ratios, a SIC-code screen, and a paragraph fact-check that verifies claims through attested computations only.
+- **D · Internal risk mart behind the same catalog** — a *private* dataset in our own project (a retail credit book and a payments ledger, Home Credit and PaySim shapes) catalogued by the same crawler, marked `visibility: private`, answered by four reviewed templates, and offered only to users holding the `finance.internal` entitlement. The demonstration that A and B cannot give: Atlas over data nobody outside can see, with the customer's access control still deciding who gets an answer.
 
 Every attested answer carries a **receipt** (template, version, reviewer, freshness, every query step with bound parameters, bytes, tokens, cost). Ad-hoc answers carry the existing walkthrough only, so a receipt can never suggest a reviewer signed off on model-drafted SQL.
 
@@ -25,6 +26,7 @@ frontend (Next.js, Firebase App Hosting)                orchestrator (FastAPI, C
                         discovery.discover(q, pack) ◀──────────┘
                           ├─ VECTOR_SEARCH over ard_catalog.embeddings WHERE metadata.pack = @pack
                           └─ in-process ranking of okf-catalog/ docs WHERE pack ∈ doc.packs
+                        access.split_candidates(user.entitlements) → visible | withheld (private, D)
                         planner (Gemini flash) + pack glossary → attested template or ad-hoc SQL
                         _fetch_one → executor: bigquery | bigquery_sample_llm | composite |
                                                sec_edgar | sec_edgar_annual | sec_ratio
@@ -42,6 +44,7 @@ frontend (Next.js, Firebase App Hosting)                orchestrator (FastAPI, C
 | Prompts | the finance glossary and synthesis rule are appended only for `pack == finance`; the public prompts are byte-identical (unit-tested) | [`packs.py`](https://github.com/srikanthbelwadi/atlas/blob/main/backend/orchestrator/packs.py), [`llm.py`](https://github.com/srikanthbelwadi/atlas/blob/main/backend/orchestrator/llm.py) |
 | Frontend | `/finance/*` routes `notFound()` unless `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED=true`; header link under the same flag | [`app/finance/layout.tsx`](https://github.com/srikanthbelwadi/atlas/blob/main/frontend/app/finance/layout.tsx), [`lib/finance.ts`](https://github.com/srikanthbelwadi/atlas/blob/main/frontend/lib/finance.ts) |
 | Budget | same $100/user/month ceiling; usage doc gains `by_pack` | [`guardrails.py`](https://github.com/srikanthbelwadi/atlas/blob/main/backend/orchestrator/guardrails.py) |
+| Access (D) | `visibility: private` + `access.entitlement` on OKF docs and crawled rows; private candidates withheld from discovery unless the user's Firestore `entitlements` include it; fetch-stage and ad-hoc-SQL checks as defence in depth | [`access.py`](https://github.com/srikanthbelwadi/atlas/blob/main/backend/orchestrator/access.py) |
 
 Proof: `tests/golden/public_regression.yaml` (the nine public suggestion chips plus a CFPB question that must *not* find a finance source) passes 10/10 against the finance-enabled revision.
 
@@ -61,7 +64,7 @@ The metric→XBRL-tag map lives once in [`xbrl_metrics.py`](https://github.com/s
 ### 2.3 Receipt
 
 Assembled in `pipeline.build_receipt` for attested answers only:
-`template_id, title, version, reviewer, reviewed_on, stale_after, stale, lifecycle, trust, pack, executor, sources[], queries[] {step, source_id, bytes_billed, row_count, params}, bytes_billed, tokens{plan, theme?, synthesize}, cost{…, generation_cost_usd?}, citation_template`. Rendered by [`ReceiptCard.tsx`](https://github.com/srikanthbelwadi/atlas/blob/main/frontend/components/ReceiptCard.tsx).
+`template_id, title, version, reviewer, reviewed_on, stale_after, stale, lifecycle, trust, pack, visibility, entitlement, executor, sources[], queries[] {step, source_id, bytes_billed, row_count, params}, bytes_billed, tokens{plan, theme?, synthesize}, cost{…, generation_cost_usd?}, citation_template, unlocked_by, restricted_to`. For a private template `unlocked_by` names the entitlement that let this user run it. Rendered by [`ReceiptCard.tsx`](https://github.com/srikanthbelwadi/atlas/blob/main/frontend/components/ReceiptCard.tsx).
 
 ## 3. Catalog inventory (`okf-catalog/packs/finance/`)
 
@@ -73,9 +76,11 @@ Assembled in `pipeline.build_receipt` for attested answers only:
 | [`fdic_banks/institutions.md`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/bigquery/fdic_banks/institutions.md) | entity master + peer financials | late-2022 snapshot |
 | [`sec_quarterly_financials/overview.md`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/bigquery/sec_quarterly_financials/overview.md) | fundamentals warehouse | filings to 2020-12-31; **fiscal 2019** last complete 10-K year |
 
-Crawled (machine-confirmed) rows for the pack: `cfpb_complaints` (1 table), `fdic_banks` (2), `sec_quarterly_financials` (10), `bls` (9, shared with public).
+Crawled (machine-confirmed) rows for the pack: `cfpb_complaints` (1 table), `fdic_banks` (2), `sec_quarterly_financials` (10), `bls` (9, shared with public), and — after `scripts/finance_phase_d.sh` — `atlas-ard-okf.finance_demo` (4 private tables, `visibility: private`).
 
-### 3.2 Attested computations (12)
+Private table documents (use case D, [`okf-catalog/packs/finance/private/finance_demo/`](https://github.com/srikanthbelwadi/atlas/tree/main/okf-catalog/packs/finance/private/finance_demo)): [`loan_applications.md`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/loan_applications.md) (the credit book: one row per application with outcome, segments, bureau-inquiry counts), [`bureau_credits.md`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/bureau_credits.md) (prior credits per applicant), [`installment_payments.md`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/installment_payments.md) (instalment schedule vs payments), [`payment_transactions.md`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/payment_transactions.md) (the payments ledger with fraud labels). All carry `visibility: private`, `access.entitlement: finance.internal`, and `restricted_to`.
+
+### 3.2 Attested computations (16: 12 public-data + 4 private)
 
 | id | Use | Executor | Cost / run |
 |---|---|---|---|
@@ -92,6 +97,10 @@ Crawled (machine-confirmed) rows for the pack: `cfpb_complaints` (1 table), `fdi
 | [`ac.fdic_peer_ratios`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/fdic_peer_ratios.md) | B2 FDIC peer table (size measure required) | bigquery | ~$0.006 |
 | [`ac.sec_filer_screen`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/sec_filer_screen.md) | B5 SIC-code screen (quarterly/annual, threshold) | bigquery, cap 30 GB | ~$0.14 |
 | [`ac.entity_resolve`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/entity_resolve.md) | name → CFPB / FDIC / SEC identities | bigquery | <$0.001 |
+| 🔒 [`ac.hc_default_rate_by_segment`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/hc_default_rate_by_segment.md) | D1 default rate by one of ten segments, small segments folded, book rate on every row | bigquery (private) | <$0.001 |
+| 🔒 [`ac.hc_bureau_history_vs_default`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/hc_bureau_history_vs_default.md) | D2 inquiries / prior credits / overdue history → default rate, per-applicant aggregation | bigquery (private, 2 tables) | <$0.001 |
+| 🔒 [`ac.hc_installment_delinquency_vintage`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/hc_installment_delinquency_vintage.md) | D3 late / short-paid share by month before application, split by later outcome | bigquery (private, 2 tables) | ~$0.003 |
+| 🔒 [`ac.paysim_structuring_pattern`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/attested-computations/paysim_structuring_pattern.md) | D4 repeated just-under-threshold transfers within a sliding window vs the legacy flag | bigquery (private) | ~$0.002 |
 
 Entity crosswalk: [`entity_xref.csv`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/entity_xref.csv) (63 rows, every CFPB string, FDIC cert and CIK verified against the data with [`infra/finance/xref_check.sql`](https://github.com/srikanthbelwadi/atlas/blob/main/infra/finance/xref_check.sql)), loaded into `atlas-ard-okf.finance_pack.entity_xref` by [`infra/finance/setup.sql`](https://github.com/srikanthbelwadi/atlas/blob/main/infra/finance/setup.sql).
 
@@ -101,7 +110,7 @@ Entity crosswalk: [`entity_xref.csv`](https://github.com/srikanthbelwadi/atlas/b
 
 ## 5. Frontend
 
-`/finance` (Ask | Fact-check a paragraph; grouped example chips; trace; answer; receipt; walkthrough), `/finance/catalog` (every source with trust, reviewer, freshness, expandable SQL), `/finance/design`, `/finance/implementation` (this document). New components: `ReceiptCard`, `TrustChip`, `FactCheckBar`, `CatalogTable`, `VerdictTableViz` (in `AnswerCanvas`); `TracePanel` shows multi-step fetches, quote verification and claim verdicts. Same design tokens as the public demo (IBM Plex; navy/amber/teal).
+`/finance` (Ask | Fact-check a paragraph; grouped example chips including an "Internal risk mart (private)" group; trace; answer; access card; receipt; walkthrough), `/finance/catalog` (every source with trust, visibility 🔒, reviewer, freshness, expandable SQL — a private entry's SQL and notes are only served to entitled accounts; a "Private" filter and the caller's own entitlements in the banner), `/finance/design`, `/finance/implementation` (this document), `/admin` (approval plus a per-user entitlement toggle). Components: `ReceiptCard` (now with the access line), `TrustChip` + `VisibilityChip`, `AccessCard` (the withheld-sources refusal card, or the "unlocked by" note), `FactCheckBar`, `CatalogTable`, `VerdictTableViz` (in `AnswerCanvas`); `TracePanel` shows multi-step fetches, quote verification, claim verdicts and withheld sources. Same design tokens as the public demo (IBM Plex; navy/amber/teal).
 
 ## 6. Data vintage — and why the demo years are 2022 and 2019
 
@@ -114,8 +123,10 @@ Confirmed by query on 2026-09-03 ([`xref_lookup.sql`](https://github.com/srikant
 | `public_regression.yaml` | 10/10 | run against the finance-enabled revision before promotion |
 | `finance_a.yaml` | 6/6 | A4 theming ~$0.05, 2–4 min; A6 honest refusal |
 | `finance_b.yaml` | 6/6 | B1 reconcile $0.13; B4 fact-check $0.26 (four claims); B5 screen $0.14; B6 honest refusal |
+| `finance_d.yaml` | pending (needs the load + crawl + redeploy in §12.5) | entitled account: D1–D4 attested with private receipts, D6 ad-hoc over the private ledger, D7 public question unaffected |
+| `finance_d_noaccess.yaml` | pending | same account without the entitlement: D5/D5b refused naming the withheld sources, D5c (SQL naming the private table in the question) never touches `finance_demo`, D7b public question unaffected |
 
-Runner: [`scripts/golden_run.py`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/golden_run.py) (asserts path, source, bound params, bytes, quotes, verdicts; writes a markdown report). Unit tests: [`tests/test_finance_catalog.py`](https://github.com/srikanthbelwadi/atlas/blob/main/tests/test_finance_catalog.py), 42 tests, no GCP required — public catalog unchanged, pack isolation, every template parses (sqlglot) and binds its parameters and touches only declared sources, tag-map sync, composite graph, quote verification, verdict arithmetic.
+Runner: [`scripts/golden_run.py`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/golden_run.py) (asserts path, source, bound params, bytes, quotes, verdicts; writes a markdown report). Unit tests: [`tests/test_finance_catalog.py`](https://github.com/srikanthbelwadi/atlas/blob/main/tests/test_finance_catalog.py), 57 tests, no GCP required — public catalog unchanged, pack isolation, every template (now 16) parses (sqlglot) and binds its parameters and touches only declared sources, tag-map sync, composite graph, quote verification, verdict arithmetic, and for D: private docs confined to `finance_demo`, no public doc reads it, the withheld split, the fetch-stage and SQL-scan refusals, the private receipt fields, and the synthetic generator's columns covering `private_setup.sql`. The four private templates were additionally executed end to end on the synthetic data in DuckDB (BigQuery-isms translated) before commit.
 
 Five rounds of golden runs found and fixed: JSON-serialisation of DATE rows in synthesis, multi-company EDGAR questions, the 21 GB SEC scan versus the 20 GB template cap (per-template caps), growth claims mis-typed as levels, and two routing misses that became a template (`ac.sec_filer_screen`) and a required parameter (`ac.fdic_peer_ratios.measure`).
 
@@ -129,6 +140,9 @@ Five rounds of golden runs found and fixed: JSON-serialisation of DATE rows in s
 | Crawl the finance pack again | `gcloud run jobs execute atlas-crawler --args="--pack,finance"` (weekly scheduler crawls every pack) |
 | Hide the section | `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED="false"` in `apphosting.yaml` → push; or route traffic to a pre-finance revision |
 | Test account | Firebase Email/Password user `atlas-test@atlasdata.world`, approved in `/admin`; `scripts/firebase_token.sh` |
+| **D: load the private mart** | [`scripts/finance_private_load.sh`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/finance_private_load.sh) `[DATA_DIR]` — Kaggle originals or the synthetic set from [`scripts/finance_private_synth.py`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/finance_private_synth.py) (generated automatically if the directory is empty) → private bucket → `finance_demo_raw` → curated `finance_demo` via [`infra/finance/private_setup.sql`](https://github.com/srikanthbelwadi/atlas/blob/main/infra/finance/private_setup.sql) → IAM check |
+| **D: crawl, redeploy, entitle** | [`scripts/finance_phase_d.sh`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/finance_phase_d.sh) — crawler rebuild + finance crawl, orchestrator redeploy (tagged revision), IAM readout, grant `finance.internal` to the test account |
+| **D: grant / revoke an entitlement** | `/admin` toggle, or [`scripts/finance_entitle.py`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/finance_entitle.py) `<email> --grant\|--revoke finance.internal` (needs `google-cloud-firestore` in the venv) |
 
 Environment on the orchestrator revision: `ATLAS_PACKS_ENABLED=public,finance`; optional `ATLAS_TEMPLATE_BYTE_CAP_MAX` (default 40 GB).
 
@@ -142,6 +156,9 @@ The plan's Layer-3 skills — procedures an orchestrating agent follows *through
 | [`conduct-outcome-monitor`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/conduct-outcome-monitor/SKILL.md) | vulnerable-cohort outcome gaps by product and year, definitions stated |
 | [`filing-fact-check`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/filing-fact-check/SKILL.md) | drive `/skills/filing-fact-check` and mark up the paragraph with verdicts |
 | [`peer-benchmark`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/peer-benchmark/SKILL.md) | size-defined peer table with the FDIC-vs-XBRL definition chosen explicitly |
+| 🔒 [`credit-portfolio-monitor`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/credit-portfolio-monitor/SKILL.md) | D · portfolio-risk review over the bank's own loan book: segments, bureau gradient, early-warning series, private receipts kept |
+| 🔒 [`payments-structuring-screen`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/payments-structuring-screen/SKILL.md) | D · structuring screen over the bank's own ledger with a sensitivity pass and the legacy blind-spot count |
+| 🔒 [`private-data-access-check`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/private-data-access-check/SKILL.md) | D · which private sources an account can query, with a live enforcement check, before planning on them |
 | [`receipt-to-audit-pack`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/receipt-to-audit-pack/SKILL.md) | receipt + walkthrough → replayable model-risk artefact |
 | [`attested-computation-author`](https://github.com/srikanthbelwadi/atlas/blob/main/skills/finance/attested-computation-author/SKILL.md) | draft a new reviewed template from repeated ad-hoc questions |
 
@@ -149,44 +166,67 @@ They are ready to run from Claude Code (or any MCP host) against the deployed AP
 
 ## 10. Not built (from the plan), by design
 
-Optional showpiece C (AML on chain data), the Kaggle loads, the deterministic attester (SQL-text hash check on execution), per-agent-identity budgets, the audit-pack export button in the UI, the MCP surface. The skills in §9 are the agent-side half of several of these; the platform-side half is the phase-3/4 backlog.
+Optional showpiece C (AML on chain data), the deterministic attester (SQL-text hash check on execution), per-agent-identity budgets, the audit-pack export button in the UI, the MCP surface. The skills in §9 are the agent-side half of several of these; the platform-side half is the phase-3/4 backlog.
 
 ## 11. Known limits
 
 Public mirrors are dated (§6). SEC bulk scans cost ~$0.13 each because `numbers` is unpartitioned and unclustered — clustering a copy in the project would make them pennies. Discovery is embedding-only; a question that names "banks" leans toward FDIC sources, which is why the screening question names the SEC filings explicitly. The crosswalk covers ~40 banks and ~20 large filers; anything outside it resolves to "no evidence" rather than a guess.
 
-## 12. Internal (private) enterprise data — analysis
+## 12. Internal (private) enterprise data — use case D
 
-**Where the pack stands.** Neither A nor B queries private data. Every source is `bigquery-public-data.*` or the public EDGAR API. The only object in our own project is `finance_pack.entity_xref`, a reviewed helper table — real "private data" in the plumbing sense (the crawler, the templates and IAM all treat it exactly as they would a customer table), but not a business dataset. So the demo currently proves discovery, attestation, cost control and receipts over *public stand-ins*, and asserts — without showing — that the same path works over a customer's warehouse.
+### 12.1 Why A and B could not show it
 
-**Why this matters commercially.** The proposal's revenue lines (Gateway, curation) are all about the customer's own estate. A buyer's first question is "show me this over *my* data with *my* access controls." A and B answer "here is how governed answers look"; they don't answer "here is Atlas cataloguing a table I own, restricting it to who may see it, and combining it with public reference data in one answer."
+Neither A nor B queries private data: every source is `bigquery-public-data.*` or the public EDGAR API, and every template had `visibility: public`. The only object in our own project was `finance_pack.entity_xref`, a reviewed helper table. So the pack proved discovery, attestation, cost control and receipts over *public stand-ins*, and asserted — without showing — that the same path works over a customer's warehouse. A buyer's first question is "show me this over *my* data with *my* access controls", and that is a different property from anything in A or B.
 
-**Is it use case C?** No. C in the plan is the AML fund-flow *guardrail showpiece* on public chain data (`crypto_ethereum`); its point is the budget stop on a multi-terabyte table. The internal-data demonstration is a different property and deserves its own label: **use case D — Internal risk mart behind the same catalog.**
+Use case C in the plan (AML fund-flow on public chain data) does not answer it either — C's point is the budget stop on a multi-terabyte public table. The internal-data demonstration got its own label, **use case D — Internal risk mart behind the same catalog**, and was built in preference to C.
 
-### 12.1 Recommendation: use case D
-
-Load two Kaggle-style datasets that ML teams train on — exactly the "representative of internal enterprise data" material the original brief asked for — into a *private* dataset in our project, catalogue them with the unchanged crawler, mark them `visibility: private` in OKF, add four reviewed templates, and answer questions that join private and public sources in one receipt.
+### 12.2 What was built
 
 | Component | Choice | Why |
 |---|---|---|
-| Private dataset | `atlas-ard-okf.finance_demo` (US multi-region, IAM: orchestrator service account only) | the same project the public pack reads from, so "same crawler, same executor, different IAM" is literally true |
-| Credit decisioning mart | **Home Credit Default Risk** (7 relational tables: applications 307 k × 122, bureau 1.7 M, prior applications, instalments 13.6 M, credit-card and POS balances) | the most realistic *relational* internal schema in the public domain; a retail-bank decisioning mart shape |
-| Payments / transaction log | **PaySim** (6.36 M mobile-money transactions with fraud flags) — or IBM AML (HI-Small) if C is built later, shared with it | a ledger shape for "your transactions" questions and a structuring/velocity template |
-| Fresh CFPB extract (optional, high value) | CFPB bulk CSV (current) loaded as `finance_demo.complaints_internal` | turns A's questions into 2024–2026 questions and demonstrates *the same templates* running on a private, current table — the "internal complaint system" story without any new SQL |
+| Private datasets | `atlas-ard-okf.finance_demo_raw` (loads, never catalogued) and `atlas-ard-okf.finance_demo` (four curated tables), US, no `allUsers` / `allAuthenticatedUsers` binding | same project the public pack reads from, so "same crawler, same executor, different IAM" is literally true; the load script prints the ACL and fails the check if a public binding ever appears |
+| Credit book | [`loan_applications`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/loan_applications.md), [`bureau_credits`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/bureau_credits.md), [`installment_payments`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/installment_payments.md) — the Home Credit Default Risk shape (applications × 18 curated columns, bureau history, instalment ledger) | the most realistic relational *decisioning-mart* schema in the public domain |
+| Payments ledger | [`payment_transactions`](https://github.com/srikanthbelwadi/atlas/blob/main/okf-catalog/packs/finance/private/finance_demo/payment_transactions.md) — the PaySim shape (hourly step, type, amount, balances, fraud label, legacy flag) | a core-banking transaction log a financial-crime team screens |
+| Data source | either the Kaggle originals (Home Credit: `application_train.csv`, `bureau.csv`, `installments_payments.csv`; PaySim renamed `paysim.csv`) **or** the synthetic set from [`scripts/finance_private_synth.py`](https://github.com/srikanthbelwadi/atlas/blob/main/scripts/finance_private_synth.py) — same column names, planted structure (default rises with inquiries and falls with income; late payment clusters before application; twelve structuring accounts), fixed seed, no real person | the demo needs the *shape* of internal data, not those rows; the synthetic path removes the Kaggle-account dependency and runs in seconds. [`private_setup.sql`](https://github.com/srikanthbelwadi/atlas/blob/main/infra/finance/private_setup.sql) curates either into the same four tables |
+| Catalog | four private table docs + four private templates (§3), all `visibility: private`, `access.entitlement: finance.internal`, `restricted_to` stated; the crawler catalogues `finance_demo` through [`targets.py`](https://github.com/srikanthbelwadi/atlas/blob/main/backend/crawler/targets.py)'s new fourth tuple element and stamps `visibility` / `entitlement` into each row's metadata with "PRIVATE" in the embedded text | the same crawl job, the same embeddings table, the same discovery query — only a marking differs |
+| Access model | Firestore `users/{uid}.entitlements: [string]`; `require_approved_user` returns them with the approval; [`access.py`](https://github.com/srikanthbelwadi/atlas/blob/main/backend/orchestrator/access.py) splits discovery candidates into visible / withheld, refuses a private template at fetch time, and scans ad-hoc SQL for private dataset references | approval says "may use Atlas"; an entitlement says "may be offered this private source". BigQuery IAM stays what decides what the service account can *read* — Atlas never re-implements IAM in Python |
+| Refusal semantics | if the best-matching source overall is withheld, Atlas refuses (`refused: not_entitled`) and names the withheld sources by id and title only — never their contents, never a public stand-in answer dressed up as the internal one | the "your controls still apply" moment, made visible rather than silent |
+| Receipt | private answers carry `visibility: private`, `unlocked_by: finance.internal`, `restricted_to` | the artefact a reviewer keeps now says *how* the answer was unlocked |
+| Frontend | `AccessCard` (withheld list or "unlocked by"), `VisibilityChip` 🔒 on catalog rows and receipts, "Private" catalog filter, the caller's entitlements in the catalog banner, entitlement toggle per user on `/admin`, a private example-chip group | |
+| Admin API | `GET /admin/entitlements` (every entitlement the catalog names, with its sources), `POST /admin/users/{uid}/entitlements` (replace list, unknown names rejected) | entitlements are defined by the catalog, not typed free-hand |
+| Planner | finance glossary gains the internal-data vocabulary ("our", "the bank's own", "internal" → private sources; the four routings; no calendar dates; never answer an internal question from a public stand-in) and the synthesis rule names internal sources as "(private)" | |
 
-**Templates (reviewed):** `ac.hc_default_rate_by_segment` (default rate by income band / contract type / channel, denominators stated), `ac.hc_bureau_inquiries_vs_default` (prior inquiries bucket → default rate), `ac.hc_installment_delinquency_vintage` (roll-rate by origination month), `ac.paysim_structuring_pattern` (repeated just-under-threshold transfers per account within N days), plus `ac.cfpb_*` re-pointed to the internal complaint table through a `source_override` (one line per template) if the fresh extract is loaded.
+### 12.3 What the demo shows that A and B cannot
 
-**What the demo shows that A and B cannot:**
+1. **Catalog page** lists `finance_demo.*` rows tagged 🔒 private with their row counts, crawled by the same job as the public tables, with "restricted to: orchestrator service account (dataset IAM); Atlas users with the finance.internal entitlement", and the caller's own entitlements in the banner.
+2. **An entitled account** asks "What is our default rate by income band…" and gets an attested answer whose receipt reads *private · unlocked by entitlement finance.internal*.
+3. **The same question from an account without the entitlement** is refused: the trace's discover line says "1 private source withheld … the best match is among them, so Atlas will not answer from a public stand-in"; the answer card names `ac.hc_default_rate_by_segment` and nothing more; `/admin` is where the grant happens, one click, effective on the next request.
+4. **Defence in depth**: a question that spells out the private table name in SQL terms never reaches BigQuery for an unentitled user — the SQL scan refuses it before the dry run.
+5. **Public questions are unaffected** either way (D7 / D7b in the golden sets).
+6. **IAM readout** (`finance_phase_d.sh` step 3): the dataset ACL and the project's BigQuery roles, showing the orchestrator identity and no public principal — the "another principal is denied" half of the story without needing a second Cloud Run service.
 
-1. *Catalog page* lists `finance_demo.*` rows tagged **private**, crawled by the same job as the public tables, with row counts and a "restricted to: orchestrator SA" line.
-2. *A question that joins private and public in one attested answer* — e.g. "default rate for applicants with more than three bureau inquiries, versus the national unemployment rate that year" (Home Credit + `bls.unemployment_cps`) — with the receipt naming both sources and their trust tiers.
-3. *Access enforcement*: the same question asked in the public pack is refused (pack isolation), and a second Cloud Run identity without dataset IAM gets a clean BigQuery permission error in the trace rather than data — the "your controls still apply" moment.
-4. *Freshness*: if the CFPB extract is loaded, the vintage line changes from "mirror ends 2023-03" to "internal extract, loaded 2026-09-xx", on the same template.
+### 12.4 Deliberate limits
 
-**Effort:** about one week — half a day of loads (GCS + `bq load`, licences checked: Home Credit competition terms, PaySim CC BY-SA 4.0), one day for the OKF docs and `visibility` field in loader/catalog/receipt, two days for the four templates and their golden questions, one day for the IAM demonstration and a second identity, half a day for chips and the catalog badge.
+The Home Credit and PaySim shapes carry no calendar dates or geography (the sources are anonymised), so the private+public join the recommendation sketched ("default rate vs the national unemployment rate that year") cannot be made honestly and was not built; the templates say "months before application" and the glossary forbids implying a period. The fresh-CFPB-extract-as-internal-table idea (`source_override`) remains backlog. Entitlement is one string today (`finance.internal`); row-level or column-level policy would be a BigQuery policy-tag concern, not an Atlas one.
 
-**Sequencing:** D before C. D is what a Gateway buyer needs to see; C is a nice 40-second guardrail moment that can reuse D's PaySim table (a deliberately unbounded scan of it, or of `crypto_ethereum`) once D exists.
+### 12.5 Bringing D live (Bel's commands)
+
+```
+# 1. data → private datasets (synthetic by default; put Kaggle files in ~/Documents/ARD_UKF/data/finance_demo first to use them)
+scripts/finance_private_load.sh 2>&1 | tee ~/Documents/ARD_UKF/logs/finance_private_load.log
+# 2. crawl + redeploy the tagged revision + IAM readout + entitle the test account
+.venv/bin/pip install google-cloud-firestore
+scripts/finance_phase_d.sh 2>&1 | tee ~/Documents/ARD_UKF/logs/finance_phase_d.log
+# 3. golden runs (entitled, then not)
+python scripts/golden_run.py --base $BASE --token "$(scripts/firebase_token.sh)" --set tests/golden/finance_d.yaml --report ~/Documents/ARD_UKF/logs/golden_finance_d.md
+python3 scripts/finance_entitle.py atlas-test@atlasdata.world --revoke finance.internal
+python scripts/golden_run.py --base $BASE --token "$(scripts/firebase_token.sh)" --set tests/golden/finance_d_noaccess.yaml --report ~/Documents/ARD_UKF/logs/golden_finance_d_noaccess.md
+python3 scripts/finance_entitle.py atlas-test@atlasdata.world --grant finance.internal
+# 4. public regression on the same revision, then promote
+python scripts/golden_run.py --base $BASE --token "$(scripts/firebase_token.sh)" --set tests/golden/public_regression.yaml --report ~/Documents/ARD_UKF/logs/golden_public_after_d.md
+gcloud run services update-traffic atlas-orchestrator --region us-central1 --to-latest
+```
 
 ## 13. Backlog after D
 
-Cluster a project-local copy of SEC `numbers` (cost); the deterministic attester; per-agent budgets and a second identity (needed for D's access demonstration anyway); the MCP surface so the §9 skills run as tools; the audit-pack export button; fresh CFPB extract refresh job.
+Cluster a project-local copy of SEC `numbers` (cost); the deterministic attester; per-agent budgets; a second Cloud Run identity without dataset IAM for a live "permission denied" trace; the MCP surface so the §9 skills run as tools; the audit-pack export button; a fresh CFPB extract loaded into `finance_demo` behind `source_override` so A's templates run on a *current* private table; row/column policy tags on `finance_demo`; optional C reusing the private ledger for the byte-cap showpiece.

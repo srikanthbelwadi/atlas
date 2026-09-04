@@ -57,6 +57,25 @@ export interface Answer {
   // Present only when an Attested Computation answered (finance pack today;
   // see pipeline.build_receipt). The artefact a reviewer keeps.
   receipt?: Receipt;
+  // Finance pack, use case D: set when a private source was involved —
+  // either withheld (the user lacks the entitlement) or unlocked.
+  access?: AccessInfo;
+  // "not_entitled" when the answer is a refusal because the best-matching
+  // source is restricted (backend/orchestrator/pipeline._withheld_answer).
+  refused?: "not_entitled";
+}
+
+// A private source discovery matched but did not offer this user.
+export interface WithheldSource {
+  source_id: string;
+  title: string;
+  entitlement: string | null;
+  score: number | null;
+}
+
+export interface AccessInfo {
+  entitlements: string[];
+  withheld: WithheldSource[];
 }
 
 export interface ReceiptQuery {
@@ -85,6 +104,11 @@ export interface Receipt {
   tokens: Record<string, TokenUsage>;
   cost: (WalkthroughCost & { generation_cost_usd?: number }) | null;
   citation_template: string | null;
+  // use case D: private templates record how they were unlocked
+  visibility?: "public" | "private";
+  entitlement?: string | null;
+  unlocked_by?: string | null;
+  restricted_to?: string | null;
 }
 
 // One row of a fact-check verdict table (visualization kind "verdict_table").
@@ -130,12 +154,23 @@ export interface CatalogEntry {
   row_count?: number | null;
   size_gb?: number | null;
   large_table?: boolean | null;
+  // use case D: private sources are listed for everyone, queryable by the entitled
+  visibility?: "public" | "private";
+  entitlement?: string | null;
+  restricted_to?: string | null;
+  accessible?: boolean;
 }
 
 export interface PackCatalog {
   pack: { id: string; title: string; tagline: string };
   entries: CatalogEntry[];
-  counts: { attested: number; tables: number };
+  counts: { attested: number; tables: number; private?: number };
+  entitlements?: string[];
+}
+
+export interface EntitlementInfo {
+  id: string;
+  sources: string[];
 }
 
 // Mirrors the `walkthrough` dict backend/orchestrator/pipeline.py builds up
@@ -192,6 +227,7 @@ export interface Walkthrough {
   source_used: WalkthroughSourceUsed | null;
   queries_executed: WalkthroughQuery[];
   backtracks: WalkthroughBacktrack[];
+  access?: AccessInfo;
   token_usage: { plan?: TokenUsage; synthesize?: TokenUsage; theme?: TokenUsage; claims?: TokenUsage };
   cost: WalkthroughCost | null;
   elapsed_s: number | null;
@@ -206,4 +242,5 @@ export interface AdminUser {
   display_name?: string;
   status: UserStatus;
   created_at?: string;
+  entitlements?: string[];
 }

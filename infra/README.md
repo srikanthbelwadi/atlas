@@ -146,3 +146,25 @@ URL; `tests/golden/public_regression.yaml` is the "did not interfere"
 check. Promote with `gcloud run services update-traffic atlas-orchestrator
 --to-latest`, then set `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED` to `"true"` in
 `frontend/apphosting.yaml`.
+
+### Private internal data (use case D)
+
+Two datasets in the project that are never public: `finance_demo_raw`
+(loads as they arrive; not catalogued) and `finance_demo` (four curated
+tables: `loan_applications`, `bureau_credits`, `installment_payments`,
+`payment_transactions`, built by `infra/finance/private_setup.sql`).
+`scripts/finance_private_load.sh [DATA_DIR]` does the whole load — Kaggle
+originals (Home Credit Default Risk + PaySim) or the synthetic set that
+`scripts/finance_private_synth.py` writes with the same column names —
+through a private bucket `gs://atlas-ard-okf-finance-demo`, and ends by
+printing both datasets' ACLs, flagging any `allUsers` /
+`allAuthenticatedUsers` binding. `scripts/finance_phase_d.sh` then rebuilds
+and runs the crawler for the finance pack (the `finance_demo` rows get
+`visibility=private` / `entitlement=finance.internal` in their metadata),
+redeploys the tagged orchestrator revision, prints who can read the dataset
+(dataset ACL + project BigQuery roles + the orchestrator's service account),
+and grants the `finance.internal` entitlement to the test account
+(`scripts/finance_entitle.py`, or the toggle on `/admin`). Golden sets:
+`tests/golden/finance_d.yaml` (entitled) and `finance_d_noaccess.yaml`
+(entitlement revoked — internal questions must be refused naming the
+withheld sources).

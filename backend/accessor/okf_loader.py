@@ -60,6 +60,9 @@ class OKFDocument:
     cost_profile: dict = field(default_factory=dict)   # {"expected_bytes": int, "cap_bytes": int}
     citation_template: str | None = None
     sources: list = field(default_factory=list)        # multi-source computations list every source here
+    # --- access (finance pack, use case D) ---
+    visibility: str = "public"                         # "public" | "private"
+    access: dict = field(default_factory=dict)         # {"entitlement": "finance.internal", "restricted_to": "..."}
 
     @property
     def is_stale(self) -> bool:
@@ -88,6 +91,8 @@ class OKFDocument:
             "lifecycle": self.lifecycle,
             "trust": self.trust,
             "pack": self.pack,
+            "visibility": self.visibility,
+            "entitlement": self.access.get("entitlement") if self.visibility == "private" else None,
         }
 
 
@@ -134,6 +139,8 @@ def _load_one(path: str) -> OKFDocument:
         cost_profile=meta.get("cost_profile") or {},
         citation_template=meta.get("citation_template"),
         sources=meta.get("sources") or [],
+        visibility=str(meta.get("visibility") or "public").lower(),
+        access=meta.get("access") or {},
     )
 
 

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/Header";
 import SignInGate from "@/components/SignInGate";
 import { useAuth } from "@/lib/auth-context";
-import { adminListUsers, adminSetUserStatus, ApiError } from "@/lib/api";
-import { AdminUser, UserStatus } from "@/lib/types";
+import { adminListEntitlements, adminListUsers, adminSetEntitlements, adminSetUserStatus, ApiError } from "@/lib/api";
+import { AdminUser, EntitlementInfo, UserStatus } from "@/lib/types";
 
 const STATUS_COLOR: Record<UserStatus, string> = {
   pending: "var(--accent)",
@@ -16,6 +16,7 @@ const STATUS_COLOR: Record<UserStatus, string> = {
 function AdminConsole() {
   const { getIdToken } = useAuth();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const [entitlements, setEntitlements] = useState<EntitlementInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyUid, setBusyUid] = useState<string | null>(null);
 
@@ -23,7 +24,9 @@ function AdminConsole() {
     try {
       const token = await getIdToken();
       if (!token) throw new ApiError(401, "Not signed in");
-      setUsers(await adminListUsers(token));
+      const [u, e] = await Promise.all([adminListUsers(token), adminListEntitlements(token).catch(() => [])]);
+      setUsers(u);
+      setEntitlements(e);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load users.");
     }
@@ -39,6 +42,27 @@ function AdminConsole() {
       const token = await getIdToken();
       if (!token) throw new ApiError(401, "Not signed in");
       await adminSetUserStatus(token, uid, action);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That didn't go through — try again.");
+    } finally {
+      setBusyUid(null);
+    }
+  };
+
+  // Finance pack, use case D: data entitlements. Approval says "may use
+  // Atlas"; an entitlement says "may be offered this private source".
+  // Toggling one rewrites the user's whole list; it applies on their next
+  // request.
+  const toggleEntitlement = async (u: AdminUser, ent: string) => {
+    setBusyUid(u.uid);
+    try {
+      const token = await getIdToken();
+      if (!token) throw new ApiError(401, "Not signed in");
+      const current = new Set(u.entitlements || []);
+      if (current.has(ent)) current.delete(ent);
+      else current.add(ent);
+      await adminSetEntitlements(token, u.uid, Array.from(current));
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That didn't go through — try again.");
@@ -77,7 +101,26 @@ function AdminConsole() {
         <UserTable title="Pending" rows={pending} onApprove={(uid) => act(uid, "approve")} onReject={(uid) => act(uid, "reject")} busyUid={busyUid} />
       )}
       <div style={{ height: 28 }} />
-      <UserTable title="Everyone else" rows={others} onApprove={(uid) => act(uid, "approve")} onReject={(uid) => act(uid, "reject")} busyUid={busyUid} />
+      <UserTable
+        title="Everyone else"
+        rows={others}
+        onApprove={(uid) => act(uid, "approve")}
+        onReject={(uid) => act(uid, "reject")}
+        busyUid={busyUid}
+        entitlements={entitlements}
+        onToggleEntitlement={toggleEntitlement}
+      />
+      {entitlements.length > 0 && (
+        <p style={{ color: "var(--ink-dim)", fontSize: "0.8rem", marginTop: 18, maxWidth: "70ch" }}>
+          Data entitlements unlock private catalog sources for an approved account (finance pack, use case D). Without one, a
+          private source is withheld from discovery and the user sees a refusal that names it. Currently defined:{" "}
+          {entitlements.map((e) => (
+            <span key={e.id}>
+              <span className="mono">{e.id}</span> ({e.sources.length} source{e.sources.length === 1 ? "" : "s"}){" "}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }
@@ -88,12 +131,16 @@ function UserTable({
   onApprove,
   onReject,
   busyUid,
+  entitlements = [],
+  onToggleEntitlement,
 }: {
   title: string;
   rows: AdminUser[];
   onApprove: (uid: string) => void;
   onReject: (uid: string) => void;
   busyUid: string | null;
+  entitlements?: EntitlementInfo[];
+  onToggleEntitlement?: (u: AdminUser, ent: string) => void;
 }) {
   if (!rows.length) return null;
   return (
@@ -117,7 +164,25 @@ function UserTable({
               <div style={{ fontSize: "0.9rem" }}>{u.display_name || u.email}</div>
               <div style={{ fontSize: "0.78rem", color: "var(--ink-dim)" }}>{u.email}</div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {u.status === "approved" &&
+                onToggleEntitlement &&
+                entitlements.map((e) => {
+                  const on = (u.entitlements || []).includes(e.id);
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => onToggleEntitlement(u, e.id)}
+                      disabled={busyUid === u.uid}
+                      title={on ? `Revoke ${e.id}` : `Grant ${e.id} (${e.sources.length} private sources)`}
+                      className={`trust-chip private${on ? "" : " locked"}`}
+                      style={{ cursor: busyUid === u.uid ? "default" : "pointer", border: "none" }}
+                    >
+                      🔒 {e.id} {on ? "· granted" : "· off"}
+                    </button>
+                  );
+                })}
               {u.status !== "approved" && (
                 <ActionButton label="Approve" onClick={() => onApprove(u.uid)} busy={busyUid === u.uid} kind="accept" />
               )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Receipt } from "@/lib/types";
-import TrustChip from "@/components/TrustChip";
+import TrustChip, { VisibilityChip } from "@/components/TrustChip";
 
 function fmtBytes(b: number): string {
   if (!b) return "0 B";
@@ -38,6 +38,7 @@ export default function ReceiptCard({ receipt }: { receipt: Receipt }) {
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <TrustChip trust={receipt.trust} />
+          <VisibilityChip visibility={receipt.visibility} entitlement={receipt.entitlement} accessible={receipt.visibility === "private" ? true : undefined} />
           {receipt.stale && <span className="trust-chip stale">needs re-review</span>}
           {receipt.lifecycle === "draft" && <span className="trust-chip draft">draft</span>}
         </div>
@@ -57,6 +58,15 @@ export default function ReceiptCard({ receipt }: { receipt: Receipt }) {
         </dd>
         <dt>executor</dt>
         <dd>{receipt.executor || "—"}</dd>
+        {receipt.visibility === "private" && (
+          <>
+            <dt>access</dt>
+            <dd>
+              private source · unlocked by entitlement <span className="mono">{receipt.unlocked_by || receipt.entitlement || "—"}</span>
+              {receipt.restricted_to ? <span style={{ color: "var(--ink-dim)" }}> · restricted to: {receipt.restricted_to}</span> : null}
+            </dd>
+          </>
+        )}
         {receipt.queries.map((q, i) => (
           <QueryRow key={i} index={i} step={q.step} sourceId={q.source_id} bytes={q.bytes_billed} rows={q.row_count} params={q.params} />
         ))}

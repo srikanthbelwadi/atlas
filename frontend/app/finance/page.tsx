@@ -9,6 +9,7 @@ import FactCheckBar from "@/components/FactCheckBar";
 import TracePanel from "@/components/TracePanel";
 import AnswerCanvas from "@/components/AnswerCanvas";
 import ReceiptCard from "@/components/ReceiptCard";
+import AccessCard from "@/components/AccessCard";
 import WalkthroughPanel from "@/components/Walkthrough";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Answer, TraceEvent, Walkthrough } from "@/lib/types";
@@ -69,8 +70,8 @@ export default function FinanceHome() {
           <div className="pack-banner">
             <strong>Finance pack</strong>
             <span>
-              Public datasets standing in for a bank&apos;s complaint system, entity master and fundamentals mart — every
-              attested answer carries a receipt.
+              Public datasets standing in for a bank&apos;s complaint system, entity master and fundamentals mart, plus a
+              private internal risk mart behind the same catalog — every attested answer carries a receipt.
             </span>
             <span style={{ marginLeft: "auto", display: "flex", gap: 14 }}>
               <Link href="/finance/catalog" className="nav-link">
@@ -117,6 +118,12 @@ export default function FinanceHome() {
           {answer && (
             <ErrorBoundary label="answer">
               <AnswerCanvas answer={answer} />
+            </ErrorBoundary>
+          )}
+
+          {answer?.access && (
+            <ErrorBoundary label="access">
+              <AccessCard access={answer.access} refused={answer.refused === "not_entitled"} />
             </ErrorBoundary>
           )}
 

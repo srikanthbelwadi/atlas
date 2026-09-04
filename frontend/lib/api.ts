@@ -1,4 +1,4 @@
-import { AdminUser, Pack, PackCatalog, TraceEvent, TraceEventName } from "./types";
+import { AdminUser, EntitlementInfo, Pack, PackCatalog, TraceEvent, TraceEventName } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_ATLAS_API_BASE_URL || "";
 
@@ -131,6 +131,20 @@ export async function adminListUsers(token: string): Promise<AdminUser[]> {
 
 export async function adminSetUserStatus(token: string, uid: string, action: "approve" | "reject"): Promise<void> {
   await authedFetch(`/admin/users/${uid}/${action}`, token, { method: "POST" });
+}
+
+export async function adminListEntitlements(token: string): Promise<EntitlementInfo[]> {
+  const res = await authedFetch("/admin/entitlements", token);
+  const body = await res.json();
+  return body.entitlements;
+}
+
+export async function adminSetEntitlements(token: string, uid: string, entitlements: string[]): Promise<void> {
+  await authedFetch(`/admin/users/${uid}/entitlements`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entitlements }),
+  });
 }
 
 export async function adminGetUsage(token: string, uid: string): Promise<{ estimated_cost_usd: number; query_count: number }> {

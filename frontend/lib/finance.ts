@@ -8,10 +8,12 @@ import type { ExampleGroup } from "@/components/AskBar";
 
 export const FINANCE_ENABLED = process.env.NEXT_PUBLIC_ATLAS_FINANCE_ENABLED === "true";
 
-// The golden questions from atlas-finance-demo-plan.md §2.4 and §3.4, minus
-// the deliberate-refusal ones (A6/B6), which don't belong on a chip a
-// visitor would click expecting an answer. Keep in sync with
-// tests/golden/finance_a.yaml and finance_b.yaml.
+// The golden questions from atlas-finance-demo-plan.md §2.4 and §3.4 plus
+// use case D (FINANCE-IMPLEMENTATION.md §12), minus the deliberate-refusal
+// ones (A6/B6/D5), which don't belong on a chip a visitor would click
+// expecting an answer. The private group answers only for accounts holding
+// the finance.internal entitlement; everyone else gets the withheld card.
+// Keep in sync with tests/golden/finance_{a,b,d}.yaml.
 export const FINANCE_EXAMPLES: ExampleGroup[] = [
   {
     label: "Complaints & conduct",
@@ -21,6 +23,15 @@ export const FINANCE_EXAMPLES: ExampleGroup[] = [
       "Complaints per $1B of deposits for the ten largest banks in 2022.",
       "What are the main themes in narratives about credit-reporting disputes filed in Q1 2022, with three representative quotes each?",
       "Did older-American-tagged complaints about debt collection get resolved with relief less often than untagged ones in 2022?",
+    ],
+  },
+  {
+    label: "Internal risk mart (private)",
+    questions: [
+      "What is our default rate by income band, and which band is furthest above the book rate?",
+      "Do applicants with more than three bureau inquiries in the last year default more often than the rest of our book?",
+      "How did late payment on instalments trend over the twelve months before application, for clients who later defaulted versus those who didn't?",
+      "Which accounts in our ledger made three or more transfers just under 10,000 within 72 hours, and did the legacy flag catch any?",
     ],
   },
   {

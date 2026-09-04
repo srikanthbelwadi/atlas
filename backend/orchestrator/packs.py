@@ -62,13 +62,24 @@ PACKS: dict[str, dict] = {
             "over sec_quarterly_financials (join numbers to submission on submission_number) with a "
             "fiscal_year / period_end_date filter, or over fdic_banks.institutions for bank screens.\n"
             "- Several companies in one question (\"Apple, Microsoft and Nvidia\") are fine for the EDGAR "
-            "templates: pass them all in the company parameter separated by commas.\n\n"
+            "templates: pass them all in the company parameter separated by commas.\n"
+            "- INTERNAL DATA: 'our', 'the bank's own', 'internal', 'our loan book / applicants / ledger / "
+            "transactions / portfolio' mean the PRIVATE finance_demo sources (titles say 'Internal risk mart' "
+            "or '(private)'). Default rate by a segment → ac.hc_default_rate_by_segment; bureau inquiries, "
+            "prior credits or overdue history vs default → ac.hc_bureau_history_vs_default; late payment, "
+            "delinquency, arrears or roll rate by month → ac.hc_installment_delinquency_vintage; structuring, "
+            "smurfing, just-under-threshold or velocity → ac.paysim_structuring_pattern. 'Default' there means "
+            "default_flag = 1 (payment difficulties). The internal tables carry no calendar dates or geography. "
+            "If a question is plainly about internal data and no private source is among the candidates, "
+            "choose no candidate — never answer an internal question from a public stand-in.\n\n"
         ),
         "synthesis_rules": (
             "\n\nFinance-pack rule: the first sentence of the narrative must name the metric "
             "definition and the source it came from (e.g. 'Using FDIC-reported return on "
-            "assets…' or 'From the 10-K as filed with the SEC…'). Never restate a figure with "
-            "more precision than the evidence carries."
+            "assets…' or 'From the 10-K as filed with the SEC…'; for an internal source, 'From the "
+            "bank's internal loan_applications table (private)…'). Never restate a figure with "
+            "more precision than the evidence carries. When the source is internal and undated, "
+            "say the data carries no calendar dates rather than implying a period."
         ),
     },
 }

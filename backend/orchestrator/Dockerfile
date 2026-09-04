@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r backend/orchestrator/requirements.txt
 
 COPY backend/orchestrator ./backend/orchestrator
 COPY backend/accessor ./backend/accessor
+# access.py reads the crawler's target list to know every private dataset
+# (use case D), even one with no hand-authored catalog doc yet.
+COPY backend/crawler/__init__.py backend/crawler/targets.py ./backend/crawler/
 COPY backend/__init__.py ./backend/__init__.py
 COPY okf-catalog ./okf-catalog
 

@@ -60,7 +60,7 @@ first — see the `attempt == 0` check in the loop below.
 import asyncio
 import time
 
-from . import discovery, guardrails, llm, packs
+from . import access, discovery, guardrails, llm, packs
 from ..accessor import bigquery_accessor, okf_loader, sec_edgar_accessor
 
 MAX_BACKTRACKS = 1
@@ -76,8 +76,13 @@ async def _to_thread(fn, *args, **kwargs):
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
+async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entitlements: list[str] | None = None):
+    """`entitlements` is the user's Firestore entitlement list (main.py reads
+    it with the approval status). Private catalog documents are withheld
+    from discovery unless the user holds the entitlement they name — see
+    access.py; the walkthrough's `access` block records what was withheld."""
     t0 = time.monotonic()
+    entitlements = sorted(set(entitlements or []))
 
     def elapsed():
         return round(time.monotonic() - t0, 2)
@@ -98,6 +103,7 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
         "token_usage": {},
         "cost": None,
         "elapsed_s": None,
+        "access": {"entitlements": entitlements, "withheld": []},
     }
 
     def finalize():
@@ -112,12 +118,27 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
 
         # --- discover: ARD candidate resolution across BQ + OKF catalog ---
         yield {"event": "discover.started", "data": {"question": question}}
-        candidates = await _to_thread(discovery.discover, question, pack)
+        all_candidates = await _to_thread(discovery.discover, question, pack)
+        # --- access: private sources the user isn't entitled to are withheld
+        # here, before the planner ever sees them. If the best match overall
+        # is one of them, Atlas refuses rather than quietly answering from a
+        # weaker public stand-in — a restricted answer must never be
+        # impersonated by an unrestricted one. ---
+        candidates, withheld = access.split_candidates(all_candidates, entitlements)
+        walkthrough["access"]["withheld"] = withheld
         walkthrough["sources_considered"] = [
-            {"source_id": c["source_id"], "title": c["title"], "trust": c["trust"], "score": round(c["score"], 3)}
+            {"source_id": c["source_id"], "title": c["title"], "trust": c["trust"], "score": round(c["score"], 3),
+             **({"visibility": "private", "entitlement": c.get("entitlement")} if c.get("visibility") == "private" else {})}
             for c in candidates
         ]
-        yield {"event": "discover.done", "data": {"elapsed_s": elapsed(), "candidates": walkthrough["sources_considered"]}}
+        top_is_withheld = bool(all_candidates) and not access.may_see(all_candidates[0], entitlements)
+        yield {"event": "discover.done", "data": {"elapsed_s": elapsed(), "candidates": walkthrough["sources_considered"],
+                                                   "withheld": withheld, "top_is_withheld": top_is_withheld}}
+        if withheld and (not candidates or top_is_withheld):
+            yield {"event": "guardrail.blocked", "data": {"code": "not_entitled", "message": _withheld_message(withheld),
+                                                          "withheld": withheld}}
+            yield {"event": "answer", "data": {**_withheld_answer(question, withheld), "access": walkthrough["access"], "walkthrough": finalize()}}
+            return
         if not candidates:
             yield {"event": "answer", "data": {**_no_evidence_answer(question), "walkthrough": finalize()}}
             return
@@ -188,7 +209,20 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
             can_retry = attempt < MAX_BACKTRACKS
 
             try:
-                fetched = await _to_thread(_fetch_one, candidate, candidate_plan, question)
+                fetched = await _to_thread(_fetch_one, candidate, candidate_plan, question, entitlements)
+            except access.AccessDenied as exc:
+                # Defence in depth: discovery already withheld private sources,
+                # so this only fires if drafted SQL named a private dataset
+                # from memory or a composite step reached one. Refuse the
+                # candidate, never the whole request.
+                yield {"event": "guardrail.blocked", "data": {"code": "not_entitled", "message": str(exc), "source_id": exc.doc_id, "entitlement": exc.entitlement}}
+                walkthrough["backtracks"].append({"from": candidate["source_id"], "reason": "not_entitled"})
+                walkthrough["access"]["withheld"].append({"source_id": exc.doc_id, "title": exc.doc_id, "entitlement": exc.entitlement, "score": None})
+                if can_retry:
+                    yield {"event": "check.backtrack", "data": {"reason": "not_entitled", "from": candidate["source_id"]}}
+                    continue
+                yield {"event": "answer", "data": {**_withheld_answer(question, walkthrough["access"]["withheld"]), "access": walkthrough["access"], "walkthrough": finalize()}}
+                return
             except guardrails.GuardrailError as exc:
                 yield {"event": "fetch.progress", "data": {"note": f"blocked: {exc.message}"}}
                 walkthrough["backtracks"].append({"from": candidate["source_id"], "reason": exc.code})
@@ -355,6 +389,8 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
             "elapsed_s": elapsed(),
             "walkthrough": finalize(),
         }
+        if withheld or (receipt_doc is not None and access.is_private(receipt_doc)):
+            answer["access"] = walkthrough["access"]
         receipt = build_receipt(receipt_doc, walkthrough, bytes_billed, cost)
         if receipt:
             answer["receipt"] = receipt
@@ -373,7 +409,7 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK):
         print(f"[pipeline] unhandled error: {exc!r}")
 
 
-def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
+def _fetch_one(candidate: dict, plan: dict, question: str, entitlements: list[str] | None = None) -> dict:
     """Dispatches to the right accessor based on candidate kind:
       - bigquery + AttestedComputation -> guarded templated SQL (trusted path)
       - bigquery + ad-hoc               -> guarded free-form SQL (byte-capped tighter)
@@ -385,11 +421,12 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
     row count."""
     if candidate.get("type") == "AttestedComputation":
         doc = okf_loader.load_by_id(candidate["source_id"])
+        access.assert_may_query(doc, entitlements)
         executor = doc.executor if doc else None
         if executor == "bigquery_sample_llm":
             return _fetch_sample_then_theme(doc, plan, question)
         if executor == "composite":
-            return _fetch_composite(doc, plan, question)
+            return _fetch_composite(doc, plan, question, entitlements)
 
     if candidate["kind"] == "bigquery" and candidate.get("type") == "AttestedComputation":
         doc = okf_loader.load_by_id(candidate["source_id"])
@@ -405,6 +442,7 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
         sql = plan.get("sql")
         if not sql:
             raise ValueError(f"Planner marked needs_sql but produced no SQL for {candidate['source_id']}")
+        access.check_sql_references(sql, entitlements)
         rows, bytes_billed = bigquery_accessor.run(sql, byte_cap=cap, timeout_seconds=guardrails.QUERY_TIMEOUT_SECONDS)
         return {"rows": rows, "bytes_billed": bytes_billed, "sql": sql, "params": {}, "doc": None}
 
@@ -466,6 +504,24 @@ def _fetch_one(candidate: dict, plan: dict, question: str) -> dict:
         "sql": None,
         "params": {},
         "doc": doc,
+    }
+
+
+def _withheld_message(withheld: list[dict]) -> str:
+    needs = sorted({w.get("entitlement") for w in withheld if w.get("entitlement")})
+    n = len(withheld)
+    return (f"{n} matching source{'s' if n != 1 else ''} {'are' if n != 1 else 'is'} restricted "
+            f"(entitlement {', '.join(needs) or 'required'}). Atlas won't answer this from a public stand-in instead.")
+
+
+def _withheld_answer(question: str, withheld: list[dict]) -> dict:
+    return {
+        "question": question,
+        "narrative": ("The data that answers this is restricted. " + _withheld_message(withheld) +
+                      " An administrator can grant the entitlement on /admin; the sources are named in the trace, without their contents."),
+        "citations": [],
+        "visualization": {"kind": "table", "data": "[]"},
+        "refused": "not_entitled",
     }
 
 
@@ -569,7 +625,7 @@ def _verify_quotes(rows: list[dict], sample: list[dict]) -> tuple[list[dict], in
     return out, verified, dropped
 
 
-def _fetch_composite(doc, plan: dict, question: str) -> dict:
+def _fetch_composite(doc, plan: dict, question: str, entitlements: list[str] | None = None) -> dict:
     """Executor `composite` (use case B reconciliation). The OKF document
     lists ordered `steps`, each naming another Attested Computation and how
     to map this computation's parameters onto it; every step runs through
@@ -586,7 +642,7 @@ def _fetch_composite(doc, plan: dict, question: str) -> dict:
         mapped = {target: params.get(source) for target, source in (step.get("params") or {}).items()}
         sub_candidate = {"source_id": sub_doc.id, "kind": sub_doc.source.get("kind", "bigquery"),
                          "type": sub_doc.type, "title": sub_doc.title, "trust": sub_doc.trust}
-        result = _fetch_one(sub_candidate, {"params": mapped}, question)
+        result = _fetch_one(sub_candidate, {"params": mapped}, question, entitlements)
         total_bytes += result.get("bytes_billed", 0)
         rows_by_step[step["name"]] = result["rows"]
         steps_out.append({"step": step["name"], "source_id": sub_doc.id, "sql": result.get("sql"), "params": result.get("params") or {},
@@ -658,4 +714,9 @@ def build_receipt(doc, walkthrough: dict, bytes_billed: int, cost: dict | None) 
         "tokens": walkthrough.get("token_usage", {}),
         "cost": cost,
         "citation_template": doc.citation_template,
+        # For a private template: which entitlement unlocked it. A reviewer
+        # reading the receipt sees "private, unlocked by finance.internal"
+        # without needing the Firestore record.
+        "unlocked_by": gov.get("entitlement") if gov.get("visibility") == "private" else None,
+        "restricted_to": (doc.access or {}).get("restricted_to") if gov.get("visibility") == "private" else None,
     }
