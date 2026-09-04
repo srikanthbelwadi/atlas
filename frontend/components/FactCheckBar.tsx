@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { factCheckStream, ApiError } from "@/lib/api";
 import { Answer, TraceEvent } from "@/lib/types";
-import { FACT_CHECK_EXAMPLE } from "@/lib/finance";
+import { FACT_CHECK_EXAMPLE, FACT_CHECK_EXAMPLES } from "@/lib/finance";
 
 interface Props {
   busy: boolean;
@@ -26,13 +26,24 @@ export default function FactCheckBar({ busy, onStart, onEvent, onAnswer, onError
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || busy) return;
+    await run(text);
+  };
+
+  // Same shape as AskBar's suggestion chips: clicking an example loads it
+  // into the textarea and checks it straight away.
+  const pick = async (example: string) => {
+    setText(example);
+    await run(example);
+  };
+
+  const run = async (raw: string) => {
+    if (!raw.trim() || busy) return;
     onStart();
     let sawTerminal = false;
     try {
       const token = await getIdToken();
       if (!token) throw new ApiError(401, "Not signed in");
-      for await (const event of factCheckStream(text.trim(), token)) {
+      for await (const event of factCheckStream(raw.trim(), token)) {
         onEvent(event);
         if (event.event === "answer") {
           sawTerminal = true;
@@ -69,6 +80,22 @@ export default function FactCheckBar({ busy, onStart, onEvent, onAnswer, onError
           {busy ? "Checking…" : "Check claims"}
         </button>
       </div>
+      {!busy && (
+        <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 12 }}>
+          {FACT_CHECK_EXAMPLES.map((group) => (
+            <div key={group.label}>
+              <div className="example-group-label">{group.label}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {group.questions.map((ex) => (
+                  <button key={ex} type="button" onClick={() => pick(ex)} className="example-chip" style={{ textAlign: "left" }}>
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </form>
   );
 }

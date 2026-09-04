@@ -45,5 +45,44 @@ export const FINANCE_EXAMPLES: ExampleGroup[] = [
   },
 ];
 
-export const FACT_CHECK_EXAMPLE =
-  "JPMorgan grew deposits 6% in 2019 while its net income reached $36.4 billion, total assets stood at $2.69 trillion and its return on assets was 1.33%.";
+// Fact-check example paragraphs. Every claim is checked through
+// ac.sec_fact_reconcile (levels: both the EDGAR API and the SEC bulk mirror)
+// or ac.sec_ratio_by_year (ratios), so examples stay inside what those can
+// reach: filers in the entity crosswalk, fiscal years the bulk mirror covers
+// (its last complete 10-K year is fiscal 2019), the 21 curated metrics and
+// the five curated ratios. Each level claim costs a ~21 GB bulk scan
+// (~$0.13), so a chip carries at most three. Some figures are deliberately wrong so the demo
+// shows a "differs" verdict; growth / percentage-change claims about level
+// metrics are included because they come back "not verifiable" by design.
+export const FACT_CHECK_EXAMPLES: ExampleGroup[] = [
+  {
+    label: "Banks, fiscal 2019 (both sources)",
+    questions: [
+      "JPMorgan grew deposits 6% in 2019 while its net income reached $36.4 billion, total assets stood at $2.69 trillion and its return on assets was 1.33%.",
+      "Bank of America earned $27.4 billion in 2019 on total assets of $2.43 trillion, with deposits of $1.43 trillion at year end.",
+      "Wells Fargo reported net income of $25 billion for 2019 and closed the year with $1.93 trillion in total assets.",
+      "Citigroup's 2019 net income was $19.4 billion, its total assets were $1.95 trillion and its return on equity was about 10%.",
+      "Goldman Sachs finished 2019 with net income of $8.5 billion, total assets of $993 billion and diluted earnings per share of $21.03.",
+    ],
+  },
+  {
+    label: "Large filers, fiscal 2019",
+    questions: [
+      "Apple's fiscal 2019 revenue was $260.2 billion, net income was $55.3 billion and its net margin was roughly 21%.",
+      "Microsoft reported $125.8 billion of revenue and $39.2 billion of net income for fiscal 2019, with operating income of $43 billion.",
+      "Amazon's 2019 revenue was $280.5 billion with net income of $11.6 billion and operating cash flow of $38.5 billion.",
+      "Exxon Mobil's 2019 net income was $14.3 billion, its capital expenditures were $24.4 billion and its long-term debt stood at $26.3 billion.",
+      "Walmart's fiscal 2019 revenue was $500 billion and its net income was $6.7 billion.",
+    ],
+  },
+  {
+    label: "Claims Atlas won't verify",
+    questions: [
+      "Nvidia's revenue rose 41% in fiscal 2019 and its net income grew faster than at any point in the prior decade.",
+      "Capital One's 2019 net income of $5.5 billion made it the most profitable card issuer in the country, and its total assets grew 5% to $390 billion.",
+      "Tesla's 2019 revenue was $24.6 billion, its net loss was $862 million, and its share price doubled over the year.",
+    ],
+  },
+];
+
+export const FACT_CHECK_EXAMPLE = FACT_CHECK_EXAMPLES[0].questions[0];
