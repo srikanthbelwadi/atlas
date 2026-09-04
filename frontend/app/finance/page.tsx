@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import Header from "@/components/Header";
 import FinanceGate, { useFinanceAccess } from "@/components/FinanceGate";
 import AskBar from "@/components/AskBar";
@@ -81,14 +80,6 @@ function FinanceWorkbench() {
             <span>
               Public datasets standing in for a bank&apos;s complaint system, entity master and fundamentals mart, plus a
               private internal risk mart behind the same catalog — every attested answer carries a receipt.
-            </span>
-            <span style={{ marginLeft: "auto", display: "flex", gap: 14 }}>
-              <Link href="/finance/catalog" className="nav-link">
-                Sources & templates →
-              </Link>
-              <Link href="/implementation#the-finance-pack-atlas-for-one-vertical" className="nav-link">
-                How it&apos;s built →
-              </Link>
             </span>
           </div>
 
