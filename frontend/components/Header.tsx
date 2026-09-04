@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import Logo from "@/components/Logo";
 import { FINANCE_ENABLED } from "@/lib/finance";
@@ -9,6 +10,10 @@ const GITHUB_URL = "https://github.com/srikanthbelwadi/atlas";
 
 export default function Header() {
   const { user, signOutUser } = useAuth();
+  const pathname = usePathname() || "/";
+  // The finance section has its own signed-out landing page with its own
+  // "how access works" section; everywhere else the public gate's section applies.
+  const howItWorksHref = pathname.startsWith("/finance") ? "/finance#how-access-works" : "/#how-it-works";
 
   return (
     <header
@@ -33,7 +38,7 @@ export default function Header() {
               a bare "#how-it-works", is what makes this work correctly from
               /implementation too, which never renders SignInGate at all. */}
           {!user && (
-            <a href="/#how-it-works" className="nav-link">
+            <a href={howItWorksHref} className="nav-link">
               How it works
             </a>
           )}

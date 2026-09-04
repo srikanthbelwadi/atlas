@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import SignInGate from "@/components/SignInGate";
+import FinanceGate, { useFinanceAccess } from "@/components/FinanceGate";
 import AskBar from "@/components/AskBar";
 import FactCheckBar from "@/components/FactCheckBar";
 import TracePanel from "@/components/TracePanel";
@@ -24,6 +24,18 @@ type Mode = "ask" | "fact-check";
  * only thing that changes what the backend can see.
  */
 export default function FinanceHome() {
+  return (
+    <>
+      <Header />
+      <FinanceGate>
+        <FinanceWorkbench />
+      </FinanceGate>
+    </>
+  );
+}
+
+function FinanceWorkbench() {
+  const { entitlements } = useFinanceAccess();
   const [mode, setMode] = useState<Mode>("ask");
   const [busy, setBusy] = useState(false);
   const [events, setEvents] = useState<TraceEvent[]>([]);
@@ -63,9 +75,6 @@ export default function FinanceHome() {
   };
 
   return (
-    <>
-      <Header />
-      <SignInGate>
         <main className="container" style={{ padding: "36px 0 80px", display: "flex", flexDirection: "column", gap: 22 }}>
           <div className="pack-banner">
             <strong>Finance pack</strong>
@@ -77,10 +86,23 @@ export default function FinanceHome() {
               <Link href="/finance/catalog" className="nav-link">
                 Sources & templates →
               </Link>
-              <Link href="/finance/implementation" className="nav-link">
+              <Link href="/implementation#the-finance-pack-atlas-for-one-vertical" className="nav-link">
                 How it&apos;s built →
               </Link>
             </span>
+          </div>
+
+          <div style={{ fontSize: "0.82rem", color: "var(--ink-dim)" }}>
+            {entitlements.length ? (
+              <>
+                Your account holds <span className="mono">{entitlements.join(", ")}</span> — private internal sources (🔒) are open to you.
+              </>
+            ) : (
+              <>
+                Public finance sources are open to you. Private internal sources (🔒) need an entitlement your account doesn&apos;t hold yet
+                — Atlas will say so, by name, if a question needs one.
+              </>
+            )}
           </div>
 
           <div className="segmented" role="group" aria-label="Mode">
@@ -139,7 +161,5 @@ export default function FinanceHome() {
             </ErrorBoundary>
           )}
         </main>
-      </SignInGate>
-    </>
   );
 }

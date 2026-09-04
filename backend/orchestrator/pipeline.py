@@ -517,8 +517,10 @@ def _withheld_message(withheld: list[dict]) -> str:
 def _withheld_answer(question: str, withheld: list[dict]) -> dict:
     return {
         "question": question,
-        "narrative": ("The data that answers this is restricted. " + _withheld_message(withheld) +
-                      " An administrator can grant the entitlement on /admin; the sources are named in the trace, without their contents."),
+        "narrative": ("This question is best answered from private data your account can't access. " + _withheld_message(withheld) +
+                      " The withheld sources are named below (by id and title only, never their contents). If you believe you should "
+                      "have access, contact your Atlas administrator and mention the entitlement — once granted, it applies to your "
+                      "next question."),
         "citations": [],
         "visualization": {"kind": "table", "data": "[]"},
         "refused": "not_entitled",

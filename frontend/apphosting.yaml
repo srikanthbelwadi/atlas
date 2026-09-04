@@ -55,3 +55,12 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  # Shown as a mailto link wherever a user needs a person: the "awaiting
+  # approval" state on /finance and the "you can't access this private data"
+  # refusal card. Matches the backend's default ATLAS_ADMIN_EMAILS. Leave
+  # empty to show "your Atlas administrator" with no link.
+  - variable: NEXT_PUBLIC_ATLAS_ADMIN_CONTACT
+    value: srikanthbelwadi@gmail.com
+    availability:
+      - BUILD
+      - RUNTIME

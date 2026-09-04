@@ -1,4 +1,4 @@
-# Use case D — Internal risk mart behind the same catalog (FINANCE-IMPLEMENTATION.md §12).
+# Use case D — Internal risk mart behind the same catalog (IMPLEMENTATION.md §8.3, §9.1, §12).
 # Run with the test account HOLDING the finance.internal entitlement
 # (scripts/finance_entitle.py atlas-test@atlasdata.world --grant finance.internal).
 # The private tables carry no calendar dates; questions are phrased accordingly.

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
-import SignInGate from "@/components/SignInGate";
+import FinanceGate from "@/components/FinanceGate";
 import CatalogTable from "@/components/CatalogTable";
 import { useAuth } from "@/lib/auth-context";
 import { getPackCatalog, ApiError } from "@/lib/api";
@@ -35,7 +35,7 @@ export default function FinanceCatalogPage() {
   return (
     <>
       <Header />
-      <SignInGate>
+      <FinanceGate>
         <main className="container" style={{ padding: "36px 0 80px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
             <h2 style={{ fontSize: "1.4rem", marginBottom: 6 }}>Finance pack catalog</h2>
@@ -70,7 +70,7 @@ export default function FinanceCatalogPage() {
             </>
           )}
         </main>
-      </SignInGate>
+      </FinanceGate>
     </>
   );
 }

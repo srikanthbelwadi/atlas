@@ -9,7 +9,7 @@ import type { ExampleGroup } from "@/components/AskBar";
 export const FINANCE_ENABLED = process.env.NEXT_PUBLIC_ATLAS_FINANCE_ENABLED === "true";
 
 // The golden questions from atlas-finance-demo-plan.md §2.4 and §3.4 plus
-// use case D (FINANCE-IMPLEMENTATION.md §12), minus the deliberate-refusal
+// the private internal mart (IMPLEMENTATION.md §8.3, §9.1), minus the deliberate-refusal
 // ones (A6/B6/D5), which don't belong on a chip a visitor would click
 // expecting an answer. The private group answers only for accounts holding
 // the finance.internal entitlement; everyone else gets the withheld card.
