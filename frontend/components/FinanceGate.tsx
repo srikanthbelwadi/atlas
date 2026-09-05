@@ -33,37 +33,79 @@ type AccessState =
 const FinanceAccessContext = createContext<{ entitlements: string[] }>({ entitlements: [] });
 export const useFinanceAccess = () => useContext(FinanceAccessContext);
 
-const AFTER_SIGN_IN = [
+const VALUE_PROPS = [
   {
-    title: "Ask, and get a receipt",
+    title: "Your private data, your access rules",
     body:
-      "Plain-English questions over complaints, conduct, SEC filings and peer banks. Attested answers carry a receipt: the reviewed template, its version and reviewer, every query step, bytes and cost.",
+      "A bank's own risk mart — a loan book and a payments ledger — sits behind the same catalog as the public data. Only accounts holding an entitlement are offered it. Everyone else gets a clear refusal that names what was withheld, never an answer dressed up from a public stand-in.",
+    tag: "🔒 Enterprise private data",
+  },
+  {
+    title: "Ask in plain English",
+    body:
+      "Complaint trends, peer benchmarks, filing figures, portfolio risk — asked the way an analyst would say it. Every question routes to a reviewed definition; the model binds parameters, it never rewrites the SQL.",
+    tag: "Ask",
   },
   {
     title: "Fact-check a paragraph",
-    body: "Paste prose with figures in it. Every numeric claim is verified against SEC filings through reviewed templates only, and comes back verified, differs, or not verifiable.",
-  },
-  {
-    title: "Browse the catalog",
-    body: "Every source the pack can discover, with its trust tier, reviewer and freshness — and for reviewed templates, the exact SQL that runs. The model only binds parameter values.",
-  },
-  {
-    title: "Private internal data, if entitled",
     body:
-      "A private risk mart — a loan book and a payments ledger — sits behind the same catalog. Only accounts holding the finance.internal entitlement are offered it; everyone else sees a clear refusal that names what was withheld.",
+      "Paste prose with figures in it. Each numeric claim is checked against SEC filings from two independent sources and comes back verified, differs, or not verifiable — with the reported figure beside it.",
+    tag: "Fact-check",
+  },
+  {
+    title: "A receipt under every answer",
+    body:
+      "Which reviewed template produced the number, its version and reviewer, whether it's still fresh, every query step with its parameters, and — for private data — the entitlement that unlocked it. The artefact a model-risk reviewer keeps.",
+    tag: "Receipts",
+  },
+];
+
+const USE_CASES = [
+  {
+    title: "Complaint & conduct intelligence",
+    body: "The CFPB complaint database as the bank's complaint system, joined to FDIC data for peer normalisation: what's rising, who answers on time, complaints per $1B of deposits, themes in narratives with verbatim verified quotes, and whether vulnerable cohorts get worse outcomes.",
+    example: "Complaints per $1B of deposits for the ten largest banks in 2022.",
+    lock: false,
+  },
+  {
+    title: "Filing-grounded fact-check & peer benchmark",
+    body: "SEC EDGAR and the SEC financial statement data sets as a fundamentals warehouse, FDIC ratios as peer data: a 10-K figure reconciled across two sources, curated ratios with the definition stated, size-defined peer tables, and paragraph fact-checks.",
+    example: "Compare return on assets for the five largest US banks by deposits, using the latest FDIC figures.",
+    lock: false,
+  },
+  {
+    title: "Internal risk over the bank's own data",
+    body: "A private credit book and payments ledger, catalogued by the same crawler and marked private: default rate by segment, bureau history versus default, early-warning delinquency trends, and structuring patterns the legacy rule missed — offered only to entitled accounts.",
+    example: "What is our default rate by income band, and which band is furthest above the book rate?",
+    lock: true,
+  },
+];
+
+const HOW_IT_WORKS = [
+  {
+    title: "One catalog, public and private",
+    body: "Every source — the public stand-ins and the bank's own tables — is described once and searched by meaning. Private sources carry a visibility mark and the entitlement they need from the moment they enter the catalog.",
+  },
+  {
+    title: "Routed to a reviewed definition",
+    body: "A question is matched to a human-reviewed template: fixed SQL or filing lookup, typed parameters, a named reviewer and a freshness date. The model fills in the parameters from your wording — nothing else.",
+  },
+  {
+    title: "Checked, not just fetched",
+    body: "Filing figures are pulled from two independent SEC sources and reconciled. Quotes from complaint narratives are verified verbatim against the rows they cite. Anything that can't be checked is said so, plainly.",
+  },
+  {
+    title: "Answered with a receipt — or refused by name",
+    body: "Attested answers carry their receipt. If the best source for your question is private and your account isn't entitled, Atlas withholds it and tells you exactly which source, so you can ask for access.",
   },
 ];
 
 const ACCESS_STEPS = [
   { title: "Sign in with Google", body: "The same account works for the public demo and the finance section." },
-  {
-    title: "An admin approves your account",
-    body: "New accounts start as pending. You'll see a waiting state here until an admin approves you; the admin is notified automatically.",
-  },
-  { title: "Ask", body: "Public finance sources are open to every approved account, within a $100 monthly query budget." },
+  { title: "An admin approves your account", body: "New accounts start as pending; you'll see a waiting state here until then." },
   {
     title: "Private sources need an entitlement",
-    body: "If a question is best answered from private data your account can't see, Atlas refuses and tells you what it withheld. If you believe you should have access, contact the administrator.",
+    body: "Public finance sources open with approval. The private risk mart needs the finance.internal entitlement — if you believe you should have it, contact the administrator.",
   },
 ];
 
@@ -79,12 +121,12 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
           Atlas · Finance pack
         </div>
         <h2 style={{ fontSize: "2rem", marginBottom: 16, maxWidth: 680, marginLeft: "auto", marginRight: "auto" }}>
-          Complaints, filings and peer banks — answered with receipts.
+          Your bank&apos;s data, answered with receipts.
         </h2>
-        <p style={{ color: "var(--ink-dim)", maxWidth: 560, margin: "0 auto 30px", fontSize: "1.02rem" }}>
-          The same Atlas platform pointed at a finance catalog: public datasets standing in for a bank&apos;s complaint
-          system, entity master and fundamentals warehouse, plus a private internal risk mart that only entitled accounts
-          can query. Every attested answer names the reviewed definition it came from.
+        <p style={{ color: "var(--ink-dim)", maxWidth: 580, margin: "0 auto 30px", fontSize: "1.02rem" }}>
+          Ask questions or fact-check a paragraph over complaints, filings and peer banks — and over the bank&apos;s own private
+          data, behind the same catalog, with your access rules deciding who gets an answer. Every attested answer names the
+          reviewed definition it came from.
         </p>
         <button onClick={onSignIn} className="cta-button">
           Sign in with Google
@@ -95,10 +137,13 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
       </section>
 
       <section className="container" style={{ padding: "32px 0 40px" }}>
-        <h3 className="section-heading">What you get after signing in</h3>
+        <h3 className="section-heading">Why it&apos;s different</h3>
         <div className="feature-grid">
-          {AFTER_SIGN_IN.map((f) => (
+          {VALUE_PROPS.map((f) => (
             <div key={f.title} className="feature-card">
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                {f.tag}
+              </div>
               <div className="feature-title">{f.title}</div>
               <p className="feature-body">{f.body}</p>
             </div>
@@ -106,10 +151,26 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
         </div>
       </section>
 
+      <section className="container" style={{ padding: "24px 0 40px" }}>
+        <h3 className="section-heading">What it demonstrates</h3>
+        <div className="use-case-list">
+          {USE_CASES.map((u) => (
+            <div key={u.title} className="use-case">
+              <div className="feature-title">
+                {u.lock ? "🔒 " : ""}
+                {u.title}
+              </div>
+              <p className="feature-body">{u.body}</p>
+              <div className="use-case-example">&ldquo;{u.example}&rdquo;</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section id="how-access-works" className="container" style={{ padding: "24px 0 40px" }}>
-        <h3 className="section-heading">How access works</h3>
+        <h3 className="section-heading">How it works</h3>
         <ol className="step-list">
-          {ACCESS_STEPS.map((step, i) => (
+          {HOW_IT_WORKS.map((step, i) => (
             <li key={step.title} className="step-item">
               <div className="step-number">{i + 1}</div>
               <div>
@@ -121,9 +182,24 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
         </ol>
       </section>
 
+      <section className="container" style={{ padding: "0 0 40px" }}>
+        <h3 className="section-heading">Getting access</h3>
+        <div className="feature-grid three">
+          {ACCESS_STEPS.map((step, i) => (
+            <div key={step.title} className="feature-card">
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                Step {i + 1}
+              </div>
+              <div className="feature-title">{step.title}</div>
+              <p className="feature-body">{step.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="container" style={{ padding: "0 0 40px", textAlign: "center" }}>
         <div style={{ color: "var(--ink-dim)", fontSize: "0.82rem", marginBottom: 14 }}>
-          Questions the finance pack answers today — each one routes to a reviewed template
+          Questions you can ask today — each one routes to a reviewed template
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 760, margin: "0 auto" }}>
           {examples.map(({ q, group }) => (
@@ -134,8 +210,9 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
           ))}
         </div>
         <p style={{ color: "var(--ink-dim)", fontSize: "0.78rem", marginTop: 16, maxWidth: 560, marginLeft: "auto", marginRight: "auto" }}>
-          The public mirrors are dated — CFPB complaints to March 2023, SEC bulk filings to fiscal 2019, FDIC to late 2022; the
-          EDGAR API is current — so example questions ask about 2022 and fiscal 2019, and every answer names the vintage it used.
+          The public datasets are stand-ins with a fixed vintage (complaints to March 2023, bulk filings to fiscal 2019), so example
+          questions ask about 2022 and fiscal 2019; every answer names the vintage it used. Over a bank&apos;s own current extract, the
+          same catalog is the product.
         </p>
       </section>
 
