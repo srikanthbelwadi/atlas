@@ -140,9 +140,20 @@ are pre-filtered by pack. Both return the same candidate shape —
 `{source_id, kind, title, description, trust, type, score, visibility,
 entitlement}` — so nothing downstream cares which pool a candidate came
 from. The public pack keeps the top 6 candidates, the finance pack the top
-8 (it has more templates competing for a question). Before planning, the
-candidates are split into *visible* and *withheld* by the caller's
-entitlements (§5.4).
+8 (it has more templates competing for a question).
+
+The crawled pool is **capped at two tables per dataset** before the merge
+(`MAX_PER_DATASET`, over-fetching from the index so the cap still leaves
+enough to choose from). This is a lesson from the Data Commons rollout: a
+schema-derived description scores by column names, so the ~200
+near-identical vintages of `census_bureau_acs` (one table per geography ×
+year) could fill every slot for any "by state" or "by county" question,
+and the one source that actually held the answer — a reviewed template —
+never reached the planner. No prompt rule can choose a candidate that
+isn't on the list; the cap keeps the best vintage or two of a table
+family and leaves room for other datasets and for the hand-authored
+documents. Before planning, the candidates are split into *visible* and
+*withheld* by the caller's entitlements (§5.4).
 
 **Plan** (`llm.py`'s `classify_and_plan`) — a fast-tier Gemini call decides
 the question's shape (point / ranking / aggregate / trend / status) and
@@ -155,8 +166,14 @@ pack may append a **glossary** to the planner prompt (`packs.py`): the
 finance glossary maps domain vocabulary ("timely response", "peer banks",
 "our loan book") to the templates that answer it, states the data vintage,
 and forbids answering a question about internal data from a public
-stand-in. The public pack's prompts are byte-identical to what they were
-before packs existed (unit-tested).
+stand-in. The public pack's glossary was empty until Google Data Commons
+joined the public catalog (§8.4); it now carries only the Data Commons
+routing rules, and a unit test asserts that no finance rule can leak into
+it. Two of those rules exist because of live misroutes, and say so: the
+Data Commons template is the one standing reason to override discovery's
+score (a COVID table merely carries a population column; each ACS table is
+a single-vintage snapshot that cannot give a trend), and a question that
+names one place is never a ranking of its children.
 
 **Fetch** (`_fetch_one` → the executor the document declares, §6) — every
 BigQuery query, templated or ad-hoc, goes through the same guarded two-step
@@ -482,9 +499,15 @@ It is reached through `backend/accessor/sec_edgar_accessor.py` and the
 shared with the finance pack.
 
 **Hand-authored documents.** `okf-catalog/` holds one reviewed `Table`
-document (`covid19_open_data`, a worked example of the format) and two
-Attested Computations: `ac.covid19_case_rate_by_county_year` (BigQuery SQL)
-and `ac.sec_edgar_company_metric_by_year` (the EDGAR API).
+document (`covid19_open_data`, a worked example of the format) and five
+Attested Computations in the public pack: `ac.covid19_case_rate_by_county_year`
+and `ac.usa_top_baby_names` (BigQuery SQL), `ac.sec_edgar_company_metric_by_year`
+(the EDGAR API), and the two Data Commons templates (§8.4). The baby-names
+template is the pattern for turning a flaky ad-hoc question into a reviewed
+one: the public demo's oldest example question failed in model-drafted SQL
+in two of four golden runs on the same day, the table is small and the
+question shape fixed, so a reviewed `SUM` across states with optional
+state / sex / top-N parameters replaced it.
 
 ### 8.2 Finance pack — public data standing in for a bank's systems
 
@@ -559,10 +582,26 @@ the canonical names and the facet that were chosen. The public planner
 glossary (`packs.py`) routes between these templates and the BigQuery
 tables — reported place statistics go to Data Commons; weather, air
 quality, incidents, city operations, campaign finance and filings stay on
-their tables. Requires `DC_API_KEY` (Secret Manager); golden set
+their tables.
+
+Getting there took four live rounds, each a one-line lesson now written
+into the code it changed: (1) built and verified in an isolated pack,
+9/9; (2) moved into the public catalog, where crawled tables outscored
+the templates in discovery — a glossary override clause and wider
+template tags fixed India's population being answered from a COVID table;
+(3) a single named place routed to the ranking template — a glossary
+rule; (4) "which states have the highest obesity rate" never saw the
+template at all because ACS vintages filled every discovery slot — the
+per-dataset cap in §4, plus a glossary line that health prevalence rates
+exist in no ACS table. The first two rounds were prompt fixes; the last
+was structural, and the difference is worth keeping in mind: when a
+routing miss survives a prompt rule, check whether the right candidate
+was ever in the list.
+
+Requires `DC_API_KEY` (Secret Manager); golden set
 `tests/golden/places_a.yaml` (9/9 live, 2026-09-06); `scripts/dc_smoke.py` measured 1.2–2.1 s per accessor call against the live API (≈0 s cached).
 
-### 8.5 Attested computations — all 19
+### 8.5 Attested computations — all 20
 
 Every reviewed template in the deployment, with its pack, executor and
 typical cost per run. Private templates (🔒) read only `finance_demo` and
@@ -573,6 +612,7 @@ that no public document reads the private dataset.
 |---|---|---|---|---|
 | `ac.covid19_case_rate_by_county_year` | public | COVID-19 case rate by county and year | bigquery | ~$0.01 |
 | `ac.sec_edgar_company_metric_by_year` | public + finance | one of 21 curated metrics by fiscal year, one or more companies | sec_edgar | ~$0.005–0.07 |
+| `ac.usa_top_baby_names` | public | most popular US baby names for a year, optionally one state and one sex | bigquery | <$0.01 |
 | `ac.dc_indicator_for_place` | public | a reported statistic for one or more named places — latest, one year, a range or the full history | datacommons_place | $0 (free API; Gemini tokens only) |
 | `ac.dc_indicator_across_places` | public | every county / state / city / country inside a parent, ranked by a reported statistic | datacommons_children | $0 (free API; Gemini tokens only) |
 | `ac.cfpb_complaints_trend` | finance | complaint trend by product, company and grain | bigquery | ~$0.01 |
@@ -806,12 +846,15 @@ The finance pack is the worked example of all three.
 
 ## 12. Verification
 
-**Unit tests** (`tests/`, 73 tests, no GCP required): the public catalog is
-unchanged by packs; pack isolation; every one of the 17 finance/public
-templates parses (sqlglot), binds its parameters and touches only declared
-sources; the two Data Commons templates parse and the accessor's place and
-indicator resolution, single-facet selection, year filters, ranking and
-caps run against a fake of the v2 API (`tests/test_places_catalog.py`); the
+**Unit tests** (`tests/`, 75 tests, no GCP required): the public catalog is
+exactly the expected set (the Data Commons and baby-names templates
+included) and untouched by packs; pack isolation; every one of the 17
+finance/public templates parses (sqlglot), binds its parameters and touches
+only declared sources; the two Data Commons templates parse and the
+accessor's place and indicator resolution, single-facet selection, year
+filters, ranking, pagination and caps run against a fake of the v2 API
+(`tests/test_places_catalog.py`); discovery's per-dataset cap; the public
+glossary carries the Data Commons routing rules and no finance rule; the
 XBRL tag map is identical in both places it lives; the composite graph is
 acyclic; quote verification; verdict arithmetic; private documents are
 confined to `finance_demo` and no public document reads it; the
@@ -831,12 +874,23 @@ bound parameters, bytes, quotes and verdicts, and writes a report):
 | `finance_d` (private mart, entitled account) | 6/6 | four attested private answers with `unlocked_by` receipts; one ad-hoc question over the private ledger; one public question unaffected |
 | `finance_d_noaccess` (same account, entitlement revoked) | 4/4 | the same private questions refused naming the withheld sources; SQL naming the private table in the question never reaches BigQuery; a public question unaffected |
 | `places_a` (Data Commons, public pack) | 9/9 | eight attested Data Commons answers with resolved DCIDs and a named source facet (13–19 s end to end; 54 s for the ~3,100-county expansion); one honest no-evidence answer. `public_regression` re-run 10/10 on the same revision |
+| `public_b` (candidate example questions) | 11/13 over two rounds | new chips are promoted to the home page only from this set once they pass: NYC 311 types, NYC collisions trend, LA PM2.5 trend, rising search terms, FEC committees, Asia CO₂ per capita, Brazil GDP per capita, Nigeria/Germany fertility, median age in Miami, obesity by state (the last two after the discovery cap, §4). SF 311 by category and the CPI trend failed in ad-hoc SQL and stay as regression targets, not chips |
 
-Five rounds of golden runs found and fixed: JSON serialisation of DATE rows
-in synthesis, multi-company EDGAR questions, the 21 GB SEC scan versus the
-20 GB template cap (per-template caps), growth claims mis-typed as levels,
-and two routing misses that became a template (`ac.sec_filer_screen`) and a
-required parameter (`ac.fdic_peer_ratios.measure`).
+Five rounds of finance golden runs found and fixed: JSON serialisation of
+DATE rows in synthesis, multi-company EDGAR questions, the 21 GB SEC scan
+versus the 20 GB template cap (per-template caps), growth claims mis-typed
+as levels, and two routing misses that became a template
+(`ac.sec_filer_screen`) and a required parameter
+(`ac.fdic_peer_ratios.measure`). Four rounds for Data Commons (§8.4) found
+`nextToken` paging (the node API returns 500 places at a time), facets
+without `importName`, the three routing misses, and the ad-hoc baby-names
+flake that became `ac.usa_top_baby_names`.
+
+**Example questions are golden questions.** Every chip on the home page
+(`frontend/lib/public-examples.ts`, seven sections by data domain) and on
+`/finance` is a question from one of these sets that has passed live; a
+candidate lives in `public_b.yaml` until it does. A chip must never point
+at a question Atlas can't answer well.
 
 ## 13. Known limits
 
@@ -846,7 +900,17 @@ required parameter (`ac.fdic_peer_ratios.measure`).
   a clustered copy inside the project would make them pennies.
 - **Discovery is embedding-only.** A question that says "banks" leans
   toward FDIC sources, which is why the screening example names the SEC
-  filings explicitly.
+  filings explicitly. Schema-derived descriptions score by column names,
+  so a table family with many vintages can dominate a shortlist; the
+  per-dataset cap (§4) bounds this but does not rank by meaning.
+- **Ad-hoc SQL is nondeterministic.** The same question over a large table
+  can succeed one run and fail the next (SF 311 by category, the CPI
+  trend, baby names before its template). The remedy is a reviewed
+  template, not a retry.
+- **Data Commons is free with no SLA and no published rate limit.** The
+  accessor caches for six hours in-process and backtracks to a BigQuery
+  source when one exists; an outage shows as a fetch error, not a wrong
+  answer.
 - **The crosswalk covers ~40 banks and ~20 large filers**; anything outside
   it resolves to "no evidence" rather than a guess.
 - **The private mart has no dates or geography**, so a private-plus-public

@@ -20,6 +20,7 @@ export const PUBLIC_EXAMPLES: ExampleGroup[] = [
       "How has median household income in Santa Clara County, CA changed over the last 10 years?",
       "How has Brazil's GDP per capita changed since 2000?",
       "Compare the fertility rate of Nigeria and Germany over the last 20 years.",
+      "What is the median age in Miami, Florida?",
     ],
   },
   {
@@ -29,6 +30,7 @@ export const PUBLIC_EXAMPLES: ExampleGroup[] = [
       "Rank US states by median household income, top 10.",
       "Which ten countries in Africa have the lowest life expectancy?",
       "Rank the countries in Asia by CO2 emissions per capita.",
+      "Which US states have the highest obesity rate?",
     ],
   },
   {

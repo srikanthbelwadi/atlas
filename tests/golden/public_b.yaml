@@ -5,6 +5,7 @@
 # widened). B2 and B7 failed in ad-hoc SQL (SF 311, BLS CPI) — not chips, kept
 # as regression targets. B9 (Miami) and B11 (obesity by state) were misroutes:
 # B11 fixed in the public glossary; B9 re-asked with the state named.
+# Round 2 (after the discovery per-dataset cap): B9 and B11 pass — promoted.
 #   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
 #       --set tests/golden/public_b.yaml --report /tmp/public_b.md
 pack: public
