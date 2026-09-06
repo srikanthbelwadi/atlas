@@ -28,14 +28,35 @@ import requests
 import yaml
 
 
+def _sse_lines(r):
+    """Yields decoded lines from an SSE response, splitting on \\n ourselves.
+    requests' iter_lines() can emit a phantom empty line when a chunk
+    boundary falls between the \\r and \\n of a line ending (sse-starlette
+    terminates lines with \\r\\n); the runner reads a blank line as
+    "event complete" and fires a half-read event that then fails to parse.
+    Found live: the first claim.verdict of the finance fact-check golden
+    question was reported as unparseable on every run while the wire
+    payload was valid JSON."""
+    buf = b""
+    for chunk in r.iter_content(chunk_size=None):
+        if not chunk:
+            continue
+        buf += chunk
+        while True:
+            i = buf.find(b"\n")
+            if i < 0:
+                break
+            line, buf = buf[:i], buf[i + 1:]
+            yield line.decode("utf-8", "replace").rstrip("\r")
+    if buf:
+        yield buf.decode("utf-8", "replace").rstrip("\r")
+
+
 def stream(base, path, token, body):
     with requests.post(f"{base}{path}", json=body, headers={"Authorization": f"Bearer {token}"}, stream=True, timeout=660) as r:
         r.raise_for_status()
         event, data = None, []
-        for raw in r.iter_lines(decode_unicode=True):
-            if raw is None:
-                continue
-            line = raw.strip("\r")
+        for line in _sse_lines(r):
             if line.startswith("event:"):
                 event = line[6:].strip()
             elif line.startswith("data:"):
