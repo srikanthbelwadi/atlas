@@ -5,6 +5,10 @@ import { useAuth } from "@/lib/auth-context";
 import { askStream, ApiError } from "@/lib/api";
 import { Answer, Pack, TraceEvent } from "@/lib/types";
 
+// Fallback list, used only when a caller passes neither `examples` nor
+// `groupedExamples`. The home page passes lib/public-examples.ts (the same
+// questions, grouped by domain) since 2026-09-06; this list is kept as the
+// verified-history record the comments below describe.
 const EXAMPLES = [
   "How did COVID case rates change by year in Alameda County, CA?",
   "Which US counties had the worst air quality last year?",

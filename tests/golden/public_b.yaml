@@ -1,0 +1,54 @@
+# Public catalog — candidate chips, round B. Nothing here is on the home
+# page yet: a question moves into frontend/lib/public-examples.ts only after
+# it passes live. Expectations are deliberately loose (the right *kind* of
+# source), tightened once the answer has been read.
+#   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
+#       --set tests/golden/public_b.yaml --report /tmp/public_b.md
+pack: public
+questions:
+  # Cities & operations
+  - id: B1
+    q: "What are the most common 311 complaint types in New York City?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.new_york}
+  - id: B2
+    q: "How many 311 cases did San Francisco receive last year, by category?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.san_francisco}
+  - id: B3
+    q: "How have motor-vehicle collisions in New York City trended by year?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.new_york}
+  # Weather & air quality
+  - id: B4
+    q: "How has annual average PM2.5 in Los Angeles County changed over the last five years?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.epa_historical_air_quality}
+  - id: B5
+    q: "Which US weather stations recorded the hottest days in 2023?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.noaa_gsod}
+  # Search trends
+  - id: B6
+    q: "What were the top rising search terms in the United States most recently?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.google_trends}
+  # Labor
+  - id: B7
+    q: "How has the US consumer price index changed over the last five years?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.bls}
+  # Elections
+  - id: B8
+    q: "Which committees received the largest individual contributions in the 2020 cycle?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.fec}
+  # Places & demographics (Data Commons)
+  - id: B9
+    q: "What is the median age in Miami?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {variable_dcid: Median_Age_Person}}
+  - id: B10
+    q: "Rank the countries in Asia by CO2 emissions per capita."
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, params_include: {parent_dcid: asia, child_type: Country}}
+  - id: B11
+    q: "Which US states have the highest obesity rate?"
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, params_include: {parent_dcid: country/USA, child_type: State}}
+  - id: B12
+    q: "How has Brazil's GDP per capita changed since 2000?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {place_dcids: country/BRA}}
+  # World development (BigQuery WDI / health-population tables)
+  - id: B13
+    q: "Compare the fertility rate of Nigeria and Germany over the last 20 years."
+    expect: {source_id_in: [ac.dc_indicator_for_place, bq.bigquery-public-data.world_bank_health_population.health_nutrition_population]}

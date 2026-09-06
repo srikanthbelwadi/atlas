@@ -9,6 +9,7 @@ import AnswerCanvas from "@/components/AnswerCanvas";
 import WalkthroughPanel from "@/components/Walkthrough";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Answer, TraceEvent, Walkthrough } from "@/lib/types";
+import { PUBLIC_EXAMPLES } from "@/lib/public-examples";
 
 export default function Home() {
   const [busy, setBusy] = useState(false);
@@ -60,7 +61,14 @@ export default function Home() {
             </div>
           )}
 
-          <AskBar busy={busy} onStart={handleStart} onEvent={handleEvent} onAnswer={handleAnswer} onError={handleError} />
+          <AskBar
+            busy={busy}
+            groupedExamples={PUBLIC_EXAMPLES}
+            onStart={handleStart}
+            onEvent={handleEvent}
+            onAnswer={handleAnswer}
+            onError={handleError}
+          />
 
           {error && (
             <div
