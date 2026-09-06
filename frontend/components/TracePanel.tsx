@@ -161,7 +161,11 @@ function notesFor(stage: string, events: TraceEvent[]): Note[] {
       // looked like nothing had happened until the next stage's event arrived.
       return [{ text: String(last.data.note || "Fetch attempt didn't complete") }];
     case "check.done":
-      return [{ text: last.data.ok ? `${last.data.row_count} rows look usable` : `Rejected: ${last.data.reason}` }];
+      return [
+        { text: last.data.ok ? `${last.data.row_count} rows look usable` : `Rejected: ${last.data.reason}` },
+        // pipeline.bound_evidence: the synthesis step saw a stratified subset
+        ...(last.data.truncated ? [{ text: String(last.data.note) }] : []),
+      ];
     case "check.backtrack":
       return [{ text: `Backtracking — trying another source (${last.data.reason})` }];
     default:

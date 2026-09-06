@@ -341,3 +341,41 @@ def test_discovery_caps_crawled_candidates_per_dataset():
     assert sum(i.startswith("bq.bigquery-public-data.census_bureau_acs") for i in ids) == 2
     assert sum(i.startswith("bq.bigquery-public-data.bls") for i in ids) == 2, "the #pack suffix must not split a dataset"
     assert discovery._dataset_key("ac.dc_indicator_for_place") == "ac.dc_indicator_for_place"
+
+
+def test_bound_evidence_keeps_every_entity_and_its_latest_rows():
+    """The general fix for the EDGAR cut-off: over the cap, each company
+    keeps an equal share of rows, most recent first, re-ordered
+    chronologically; under the cap rows are untouched; the coverage record
+    says what happened."""
+    rows = []
+    for company in ("Apple", "Microsoft", "Nvidia"):
+        for fy in range(2000, 2026):
+            for q in range(1, 9):   # 8 facts per year per company -> 624 rows
+                rows.append({"company": company, "fiscal_year": fy, "value": fy * 10 + q})
+    sent, cov = pipeline.bound_evidence(rows, 60)
+    assert cov == {"rows_total": 624, "rows_sent": 60, "truncated": True, "stratified_by": "company", "ordered_by": "fiscal_year"}
+    by = {}
+    for r in sent:
+        by.setdefault(r["company"], []).append(r["fiscal_year"])
+    assert set(by) == {"Apple", "Microsoft", "Nvidia"}, "no entity may vanish"
+    assert all(len(v) == 20 for v in by.values())
+    assert all(max(v) == 2025 for v in by.values()), "the latest year survives for every entity"
+    assert all(v == sorted(v) for v in by.values()), "chronological within each entity"
+
+    small = rows[:10]
+    assert pipeline.bound_evidence(small, 60) == (small, {"rows_total": 10, "rows_sent": 10, "truncated": False, "stratified_by": None, "ordered_by": None})
+
+    # No entity column: keep the most recent rows.
+    series = [{"date": f"{y:04d}-01-01", "value": y} for y in range(1900, 2026)]
+    sent, cov = pipeline.bound_evidence(series, 5)
+    assert [r["date"][:4] for r in sent] == ["2021", "2022", "2023", "2024", "2025"] and cov["stratified_by"] is None and cov["ordered_by"] == "date"
+
+
+def test_bound_evidence_hands_small_groups_surplus_to_large_ones():
+    rows = [{"place": "A", "year": y} for y in range(2020, 2023)] + [{"place": "B", "year": y} for y in range(1990, 2026)]
+    sent, cov = pipeline.bound_evidence(rows, 20)
+    counts = {}
+    for r in sent:
+        counts[r["place"]] = counts.get(r["place"], 0) + 1
+    assert counts == {"A": 3, "B": 17} and cov["rows_sent"] == 20

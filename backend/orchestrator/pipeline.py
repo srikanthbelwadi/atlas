@@ -58,12 +58,22 @@ redrafting a fresh, single-candidate plan for every attempt after the
 first — see the `attempt == 0` check in the loop below.
 """
 import asyncio
+import os
+import re
 import time
 
 from . import access, discovery, guardrails, llm, packs
 from ..accessor import bigquery_accessor, datacommons_accessor, okf_loader, sec_edgar_accessor
 
 MAX_BACKTRACKS = 1
+
+# How many rows synthesis may see. The cap keeps the synthesis prompt
+# bounded; what matters is HOW rows are cut when it binds — see
+# bound_evidence(): by stratum (every company / place keeps its share, most
+# recent rows first), never silently, and the narrative is told it saw a
+# subset. Found live: 593 raw EDGAR facts for three companies, head-500,
+# Nvidia's recent years gone and nobody told.
+EVIDENCE_ROW_CAP = int(os.environ.get("ATLAS_EVIDENCE_ROW_CAP", 500))
 
 # Finance pack (see packs.py / IMPLEMENTATION.md "packs"): `run()` takes a
 # `pack` and threads it into discovery (which only returns that pack's
@@ -307,14 +317,22 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
                 return
 
             preview = rows[:3]
-            yield {"event": "check.done", "data": {"ok": True, "row_count": len(rows), "preview": preview}}
+            sent_rows, coverage = bound_evidence(rows, EVIDENCE_ROW_CAP)
+            walkthrough["evidence"] = coverage
+            yield {"event": "check.done", "data": {"ok": True, "row_count": len(rows), "preview": preview, **coverage,
+                   **({"note": f"Evidence capped: {coverage['rows_sent']} of {coverage['rows_total']} rows sent to synthesis"
+                       + (f", an equal share per {coverage['stratified_by']}" if coverage.get("stratified_by") else "")
+                       + (f", most recent by {coverage['ordered_by']} first" if coverage.get("ordered_by") else "")}
+                      if coverage["truncated"] else {})}}
             walkthrough["source_used"] = {"id": candidate["source_id"], "title": candidate["title"], "trust": candidate["trust"]}
             receipt_doc = fetched.get("doc")
             evidence = {
                 "question": question,
                 "source": walkthrough["source_used"],
-                "rows": rows[:500],  # keep the synthesis prompt bounded regardless of result size
+                "rows": sent_rows,
             }
+            if coverage["truncated"]:
+                evidence["coverage"] = coverage
             if receipt_doc is not None and getattr(receipt_doc, "citation_template", None):
                 evidence["definition"] = receipt_doc.citation_template
             break
@@ -528,6 +546,97 @@ def _fetch_one(candidate: dict, plan: dict, question: str, entitlements: list[st
         "params": {},
         "doc": doc,
     }
+
+
+_ORDER_COLUMNS = ("date", "fiscal_year", "year", "period_end", "period", "month", "quarter", "time", "as_of")
+
+
+def _stratum_column(rows: list[dict], cap: int) -> str | None:
+    """The lowest-cardinality text column with 2..cap/2 distinct values — the
+    entities the question compares (company, place, category)."""
+    keys = list(rows[0].keys())
+    best = None
+    for k in keys:
+        vals = [r.get(k) for r in rows]
+        if not all(isinstance(v, str) for v in vals if v is not None):
+            continue
+        n = len({v for v in vals if v is not None})
+        if 2 <= n <= max(2, cap // 2) and (best is None or n < best[1]):
+            best = (k, n)
+    return best[0] if best else None
+
+
+def _order_column(rows: list[dict]) -> str | None:
+    keys = [k for k in rows[0].keys()]
+    for name in _ORDER_COLUMNS:
+        for k in keys:
+            if k.lower() == name or re.fullmatch(rf"{name}[_a-z]*", k.lower()):
+                if any(r.get(k) is not None for r in rows):
+                    return k
+    return None
+
+
+def _sort_key(v):
+    if v is None:
+        return (0, "")
+    if isinstance(v, (int, float)):
+        return (1, f"{v:020.4f}")
+    return (1, str(v))
+
+
+def bound_evidence(rows: list[dict], cap: int) -> tuple[list[dict], dict]:
+    """Keeps synthesis' evidence under `cap` rows without a positional cut.
+
+    Under the cap: rows untouched. Over it: rows are grouped by the
+    lowest-cardinality text column (company, place, …) and each group keeps
+    an equal share, most recent first when a date/year column exists; the
+    result is re-ordered chronologically within each group. With no
+    stratum column the most recent `cap` rows are kept; with neither, the
+    head. Always returns a coverage record for the trace, the walkthrough
+    and the synthesis prompt: {rows_total, rows_sent, truncated,
+    stratified_by, ordered_by}."""
+    total = len(rows)
+    if total <= cap or not rows or not isinstance(rows[0], dict):
+        return rows, {"rows_total": total, "rows_sent": total, "truncated": False, "stratified_by": None, "ordered_by": None}
+    stratum = _stratum_column(rows, cap)
+    order = _order_column(rows)
+
+    def recent_first(group: list[dict]) -> list[dict]:
+        if order is None:
+            return list(group)
+        return sorted(group, key=lambda r: _sort_key(r.get(order)), reverse=True)
+
+    def chronological(group: list[dict]) -> list[dict]:
+        if order is None:
+            return group
+        return sorted(group, key=lambda r: _sort_key(r.get(order)))
+
+    if stratum is None:
+        kept = recent_first(rows)[:cap]
+        return chronological(kept), {"rows_total": total, "rows_sent": len(kept), "truncated": True,
+                                     "stratified_by": None, "ordered_by": order}
+
+    groups: dict = {}
+    for r in rows:
+        groups.setdefault(r.get(stratum), []).append(r)
+    n = len(groups)
+    quota = {g: cap // n for g in groups}
+    for g in list(groups)[: cap - (cap // n) * n]:
+        quota[g] += 1
+    # Groups smaller than their quota hand the surplus to the others.
+    surplus = sum(max(0, quota[g] - len(rs)) for g, rs in groups.items())
+    for g, rs in groups.items():
+        quota[g] = min(quota[g], len(rs))
+    for g, rs in groups.items():
+        if surplus <= 0:
+            break
+        extra = min(surplus, len(rs) - quota[g])
+        quota[g] += extra
+        surplus -= extra
+    out = []
+    for g, rs in groups.items():
+        out.extend(chronological(recent_first(rs)[: quota[g]]))
+    return out, {"rows_total": total, "rows_sent": len(out), "truncated": True, "stratified_by": stratum, "ordered_by": order}
 
 
 def _withheld_message(withheld: list[dict]) -> str:
