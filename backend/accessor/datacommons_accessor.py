@@ -250,6 +250,47 @@ def _http(method: str, path: str, params: dict | None = None, body: dict | None 
         raise DataCommonsError("Data Commons returned a non-JSON response.", code="upstream_error") from exc
 
 
+def _post_all_pages(path: str, body: dict, max_pages: int = 20) -> list[dict]:
+    """POST `body`, following `nextToken` (the v2 API pages node and
+    observation responses — a `containedInPlace+` expansion of every US
+    county comes back 500 at a time). Each page is cached separately."""
+    pages, token = [], None
+    for _ in range(max_pages):
+        page = _request("POST", path, body={**body, **({"nextToken": token} if token else {})})
+        pages.append(page)
+        token = page.get("nextToken")
+        if not token:
+            break
+    return pages
+
+
+def _merge_observation_pages(pages: list[dict]) -> dict:
+    by_var: dict = {}
+    facets: dict = {}
+    for page in pages:
+        facets.update(page.get("facets") or {})
+        for var, block in (page.get("byVariable") or {}).items():
+            target = by_var.setdefault(var, {"byEntity": {}})["byEntity"]
+            for ent, eblock in (block.get("byEntity") or {}).items():
+                if ent in target and eblock.get("orderedFacets"):
+                    target[ent].setdefault("orderedFacets", []).extend(eblock["orderedFacets"])
+                else:
+                    target[ent] = eblock
+    return {"byVariable": by_var, "facets": facets}
+
+
+def _source_label(meta: dict) -> str | None:
+    """A human-readable source for a facet: importName when present, else
+    the provenance URL's host, else the measurement method."""
+    if meta.get("importName"):
+        return str(meta["importName"])
+    url = meta.get("provenanceUrl")
+    if url:
+        host = urllib.parse.urlparse(str(url)).netloc
+        return host or str(url)
+    return meta.get("measurementMethod")
+
+
 def clear_cache() -> None:
     with _cache_lock:
         _cache.clear()
@@ -363,11 +404,15 @@ def children_of(parent_dcid: str, child_type: str) -> list[dict]:
     as [{"dcid", "name"}], capped at MAX_ENTITIES — a cap hit is a
     DataCommonsError so the planner's next candidate, or an honest
     refusal, takes over rather than a silently truncated ranking."""
-    resp = _request("POST", "node", body={"nodes": [parent_dcid], "property": f"<-containedInPlace+{{typeOf:{child_type}}}"})
-    arcs = ((resp.get("data") or {}).get(parent_dcid) or {}).get("arcs") or {}
     nodes = []
-    for arc in arcs.values():
-        nodes.extend(arc.get("nodes") or [])
+    for page in _post_all_pages("node", {"nodes": [parent_dcid], "property": f"<-containedInPlace+{{typeOf:{child_type}}}"}):
+        arcs = ((page.get("data") or {}).get(parent_dcid) or {}).get("arcs") or {}
+        for arc in arcs.values():
+            nodes.extend(arc.get("nodes") or [])
+        if len(nodes) > MAX_ENTITIES:
+            break
+    seen = set()
+    nodes = [n for n in nodes if n.get("dcid") and not (n["dcid"] in seen or seen.add(n["dcid"]))]
     if len(nodes) > MAX_ENTITIES:
         raise DataCommonsError(
             f"{len(nodes):,} places of type {child_type} in that parent exceeds the {MAX_ENTITIES:,}-place cap; "
@@ -413,9 +458,9 @@ def _indicator_candidates(indicator: str) -> list[dict]:
 def _existence(variables: list[str], entities: list[str]) -> dict[str, set[str]]:
     """variable -> set of entities that have at least one observation
     (`select entity, variable` — no values, so it's cheap)."""
-    resp = _request("POST", "observation", body={
+    resp = _merge_observation_pages(_post_all_pages("observation", {
         "date": "", "variable": {"dcids": variables}, "entity": {"dcids": entities}, "select": ["entity", "variable"],
-    })
+    }))
     out: dict[str, set[str]] = {}
     for var, block in (resp.get("byVariable") or {}).items():
         out[var] = set((block.get("byEntity") or {}).keys())
@@ -468,10 +513,10 @@ def fetch_observations(variable: str, entities: list[dict], date: str = "", year
     api_date = "LATEST" if latest_only and not (year or year_from or year_to) else (date or "")
     if year and not (year_from or year_to):
         api_date = str(year)
-    resp = _request("POST", "observation", body={
+    resp = _merge_observation_pages(_post_all_pages("observation", {
         "date": api_date, "variable": {"dcids": [variable]}, "entity": {"dcids": dcids},
         "select": ["entity", "variable", "date", "value"],
-    })
+    }))
     facets_meta = resp.get("facets") or {}
     by_entity = (((resp.get("byVariable") or {}).get(variable) or {}).get("byEntity") or {})
 
@@ -490,7 +535,7 @@ def fetch_observations(variable: str, entities: list[dict], date: str = "", year
     meta = facets_meta.get(facet_id) or {}
     facet = {
         "facet_id": facet_id,
-        "source": meta.get("importName"),
+        "source": _source_label(meta),
         "provenance_url": meta.get("provenanceUrl"),
         "measurement_method": meta.get("measurementMethod"),
         "observation_period": meta.get("observationPeriod"),
@@ -532,7 +577,8 @@ def fetch_observations(variable: str, entities: list[dict], date: str = "", year
     rows.sort(key=lambda r: (str(r["place"]), str(r["date"])))
     if len(rows) > MAX_ROWS:
         raise DataCommonsError(f"{len(rows):,} observations exceeds the {MAX_ROWS:,}-row cap; narrow the years or places.", code="too_many_rows")
-    available = [{"facet_id": f, "source": (facets_meta.get(f) or {}).get("importName"), "covers_places": coverage[f]} for f in
+    available = [{"facet_id": f, "source": _source_label(facets_meta.get(f) or {}), "covers_places": coverage[f],
+                  "facet_raw": facets_meta.get(f) or {}} for f in
                  sorted(coverage, key=lambda f: (-coverage[f], first_rank[f], f))]
     return {"rows": rows, "facet": facet, "facets_available": available}
 

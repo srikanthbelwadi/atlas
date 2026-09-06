@@ -301,3 +301,23 @@ def test_transport_cache_dedupes_identical_calls(api):
     n = len(api.calls)
     dc.resolve_place("California")
     assert len(api.calls) == n
+
+
+def test_children_follow_next_token_pages(monkeypatch):
+    """The node API pages `containedInPlace+` expansions (500 at a time for
+    every US county); the accessor must follow nextToken, not stop at page 1."""
+    monkeypatch.setenv("DC_API_KEY", "test-key")
+    dc.clear_cache()
+    pages = {
+        None: {"data": {"country/USA": {"arcs": {"containedInPlace+": {"nodes": [{"dcid": "geoId/01001", "name": "Autauga County"}]}}}}, "nextToken": "p2"},
+        "p2": {"data": {"country/USA": {"arcs": {"containedInPlace+": {"nodes": [{"dcid": "geoId/01003", "name": "Baldwin County"}]}}}}},
+    }
+    monkeypatch.setattr(dc, "_http", lambda m, p, params=None, body=None: pages[(body or {}).get("nextToken")])
+    kids = dc.children_of("country/USA", "County")
+    assert [k["dcid"] for k in kids] == ["geoId/01001", "geoId/01003"]
+
+
+def test_source_label_falls_back_to_provenance_host():
+    assert dc._source_label({"importName": "CensusACS5YearSurvey"}) == "CensusACS5YearSurvey"
+    assert dc._source_label({"provenanceUrl": "https://www2.census.gov/programs-surveys/popest"}) == "www2.census.gov"
+    assert dc._source_label({"measurementMethod": "WorldBankEstimate"}) == "WorldBankEstimate"

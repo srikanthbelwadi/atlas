@@ -40,8 +40,8 @@ def main() -> int:
         return 2
     failures = 0
     print(f"{'case':32} {'secs':>6}  rows  resolved")
+    dc.clear_cache()
     for label, executor, params in CASES:
-        dc.clear_cache()
         t0 = time.monotonic()
         try:
             out = dc.run(executor, params)
@@ -52,13 +52,15 @@ def main() -> int:
             if out["rows"]:
                 r = out["rows"][0]
                 print(f"{'':32} {'':6}        e.g. {r.get('place')} {r.get('date')}: {r.get('value')} {r.get('unit') or ''}")
+            if out.get("facets_available"):
+                print(f"{'':32} {'':6}        facet: {out['facets_available'][0].get('facet_raw')}")
         except dc.DataCommonsError as exc:
             failures += 1
             print(f"{label:32} {time.monotonic() - t0:6.2f}  FAIL  [{exc.code}] {exc.message}")
         except Exception as exc:  # noqa: BLE001
             failures += 1
             print(f"{label:32} {time.monotonic() - t0:6.2f}  FAIL  {exc!r}")
-    # A second, cached run of the first case shows the in-process cache at work.
+    # A second run of the first case, with nothing cleared, shows the in-process cache at work.
     t0 = time.monotonic()
     dc.run("datacommons_place", CASES[0][2])
     print(f"{'cached repeat of first case':32} {time.monotonic() - t0:6.2f}")
