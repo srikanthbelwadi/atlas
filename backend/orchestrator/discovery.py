@@ -35,6 +35,15 @@ from ..accessor.okf_loader import DEFAULT_PACK
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "atlas-ard-okf")
 ARD_CATALOG_DATASET = os.environ.get("ATLAS_ARD_CATALOG_DATASET", "ard_catalog")
 TOP_K = int(os.environ.get("ATLAS_DISCOVERY_TOP_K", 6))
+# At most this many crawled tables from ONE dataset may occupy the
+# shortlist. Found live (2026-09-06): "Which US states have the highest
+# obesity rate?" filled all six slots with census_bureau_acs state_* tables
+# (~200 near-identical vintages of the same schema), so the Data Commons
+# template — the only source that actually holds obesity — never reached
+# the planner and no prompt rule could help. Two per dataset keeps the best
+# vintage(s) of a table family while leaving room for other datasets and
+# for the hand-authored templates.
+MAX_PER_DATASET = int(os.environ.get("ATLAS_DISCOVERY_MAX_PER_DATASET", 2))
 
 _bq_client = None
 
@@ -156,6 +165,25 @@ def _search_okf_catalog(question_embedding: list[float], top_k: int, pack: str =
     return candidates[:top_k]
 
 
+def _dataset_key(source_id: str) -> str:
+    """`bq.<project>.<dataset>.<table>[#pack]` -> `bq.<project>.<dataset>`;
+    anything else is its own key."""
+    parts = source_id.split("#", 1)[0].split(".")
+    return ".".join(parts[:3]) if len(parts) >= 4 and parts[0] == "bq" else source_id
+
+
+def _cap_per_dataset(candidates: list[dict], limit: int) -> list[dict]:
+    """Keeps at most `limit` candidates per dataset, in score order."""
+    kept, per_dataset = [], {}
+    for c in sorted(candidates, key=lambda c: c["score"], reverse=True):
+        key = _dataset_key(c["source_id"])
+        if per_dataset.get(key, 0) >= limit:
+            continue
+        per_dataset[key] = per_dataset.get(key, 0) + 1
+        kept.append(c)
+    return kept
+
+
 def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
     """Returns merged, score-sorted candidates from the crawled BigQuery
     catalog and the hand-authored OKF catalog for one pack, deduplicated by
@@ -164,7 +192,10 @@ def discover(question: str, pack: str = DEFAULT_PACK) -> list[dict]:
     user — see access.split_candidates."""
     question_embedding = llm.embed(question)
     k = packs.top_k(pack, TOP_K)
-    candidates = _search_bq_catalog(question_embedding, k, pack) + _search_okf_catalog(question_embedding, k, pack)
+    # Over-fetch from the crawled index so the per-dataset cap below still
+    # leaves k candidates to choose from.
+    crawled = _cap_per_dataset(_search_bq_catalog(question_embedding, k * 4, pack), MAX_PER_DATASET)
+    candidates = crawled + _search_okf_catalog(question_embedding, k, pack)
 
     seen = {}
     for c in candidates:

@@ -62,6 +62,7 @@ PUBLIC_IDS_BEFORE_FINANCE = {
     # reviewed templates, backend/accessor/datacommons_accessor.py).
     "ac.dc_indicator_for_place",
     "ac.dc_indicator_across_places",
+    "ac.usa_top_baby_names",
 }
 
 

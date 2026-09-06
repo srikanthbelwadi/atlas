@@ -327,3 +327,17 @@ def test_source_label_falls_back_to_provenance_host():
     assert dc._source_label({"importName": "CensusACS5YearSurvey"}) == "CensusACS5YearSurvey"
     assert dc._source_label({"provenanceUrl": "https://www2.census.gov/programs-surveys/popest"}) == "www2.census.gov"
     assert dc._source_label({"measurementMethod": "WorldBankEstimate"}) == "WorldBankEstimate"
+
+
+def test_discovery_caps_crawled_candidates_per_dataset():
+    from backend.orchestrator import discovery
+    acs = [{"source_id": f"bq.bigquery-public-data.census_bureau_acs.state_{y}_5yr", "score": 0.9 - i * 0.01}
+           for i, y in enumerate(range(2010, 2020))]
+    other = [{"source_id": "bq.bigquery-public-data.bls.unemployment_cps", "score": 0.7},
+             {"source_id": "bq.bigquery-public-data.bls.cpi_u#finance", "score": 0.69}]
+    kept = discovery._cap_per_dataset(acs + other, 2)
+    ids = [c["source_id"] for c in kept]
+    assert ids[:2] == [acs[0]["source_id"], acs[1]["source_id"]]
+    assert sum(i.startswith("bq.bigquery-public-data.census_bureau_acs") for i in ids) == 2
+    assert sum(i.startswith("bq.bigquery-public-data.bls") for i in ids) == 2, "the #pack suffix must not split a dataset"
+    assert discovery._dataset_key("ac.dc_indicator_for_place") == "ac.dc_indicator_for_place"

@@ -14,8 +14,10 @@ questions:
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.noaa_gsod}
   - q: "What are the most common types of crime reported in Chicago?"
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.chicago_crime}
+  # Reviewed template since 2026-09-06 (ad-hoc SQL failed in 2 of 4 runs);
+  # the table itself is still an acceptable answer.
   - q: "What was the most popular baby name in the United States in 2020?"
-    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.usa_names}
+    expect: {source_id_in: [ac.usa_top_baby_names, bq.bigquery-public-data.usa_names.usa_1910_current]}
   - q: "Which candidates raised the most money in federal campaign contributions recently?"
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.fec}
   # Either the BLS table (ad-hoc SQL) or, since Data Commons joined the
