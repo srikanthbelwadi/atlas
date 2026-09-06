@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Atlas places pack (Data Commons) — phase 0 on Google Cloud (project atlas-ard-okf).
+# Atlas × Google Data Commons — phase 0 on Google Cloud (project atlas-ard-okf).
 #
 # Idempotent; run from the repo root with gcloud authenticated:
 #
-#   DC_API_KEY=... scripts/places_phase0.sh 2>&1 | tee /tmp/places_phase0.log
+#   DC_API_KEY=... scripts/datacommons_phase0.sh 2>&1 | tee /tmp/datacommons_phase0.log
 #
 # Steps:
 #   1. Secret Manager: create/update `dc-api-key` from $DC_API_KEY and grant
@@ -13,15 +13,14 @@
 #   2. Local smoke + timing run of the accessor (scripts/dc_smoke.py) so a
 #      bad key or a changed API shape fails here, before a build.
 #   3. Build the orchestrator image and deploy it as a NO-TRAFFIC revision
-#      tagged `places`, with ATLAS_PACKS_ENABLED=public,finance,places and
-#      DC_API_KEY mounted from the secret. The public URL keeps serving the
-#      previous revision until you promote.
+#      tagged `places`, with DC_API_KEY mounted from the secret (the Data
+#      Commons templates live in the public catalog — no pack flag). The
+#      public URL keeps serving the previous revision until you promote.
 #   4. Print the tagged URL for the golden run:
 #        scripts/golden_run.py --base <tagged-url> --token "$(scripts/firebase_token.sh)" \
 #            --set tests/golden/places_a.yaml --report /tmp/places_a.md
 #        scripts/golden_run.py ... --set tests/golden/public_regression.yaml   # did-not-interfere
 #      Promote with: gcloud run services update-traffic atlas-orchestrator --to-latest --region=us-central1
-#      then set NEXT_PUBLIC_ATLAS_PLACES_ENABLED to "true" in frontend/apphosting.yaml.
 set -euo pipefail
 
 PROJECT=${PROJECT:-atlas-ard-okf}
@@ -29,7 +28,7 @@ REGION=${REGION:-us-central1}
 SERVICE=${SERVICE:-atlas-orchestrator}
 SECRET=${SECRET:-dc-api-key}
 IMAGE_REPO="us-central1-docker.pkg.dev/${PROJECT}/atlas-images"
-PACKS=${PACKS:-public,finance,places}
+PACKS=${PACKS:-public,finance}
 
 : "${DC_API_KEY:?set DC_API_KEY (https://apikeys.datacommons.org)}"
 gcloud config set project "$PROJECT" >/dev/null

@@ -18,8 +18,10 @@ questions:
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.usa_names}
   - q: "Which candidates raised the most money in federal campaign contributions recently?"
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.fec}
+  # Either the BLS table (ad-hoc SQL) or, since Data Commons joined the
+  # public catalog, the reviewed Data Commons template — both are correct.
   - q: "What is the unemployment rate in California?"
-    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.bls}
+    expect: {source_id_in: [ac.dc_indicator_for_place, bq.bigquery-public-data.bls.unemployment_cps]}
   - q: "What was Google's revenue in 2023?"
     expect: {path: attested, source_id: ac.sec_edgar_company_metric_by_year}
   # Must NOT be answerable from the public pack even after the finance crawl:

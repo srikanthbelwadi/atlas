@@ -58,6 +58,10 @@ PUBLIC_IDS_BEFORE_FINANCE = {
     "bq.bigquery-public-data.covid19_open_data.covid19_open_data",
     "ac.covid19_case_rate_by_county_year",
     "ac.sec_edgar_company_metric_by_year",
+    # Google Data Commons joined the public catalog on 2026-09-06 (two
+    # reviewed templates, backend/accessor/datacommons_accessor.py).
+    "ac.dc_indicator_for_place",
+    "ac.dc_indicator_across_places",
 }
 
 
@@ -112,9 +116,13 @@ def test_crawler_targets_keep_the_public_fourteen():
     assert "finance_demo_raw" not in finance, "raw loads are never catalogued"
 
 
-def test_public_planner_prompt_gets_no_glossary():
-    assert packs.glossary("public") == ""
-    assert packs.synthesis_rules("public") == ""
+def test_public_planner_prompt_gets_no_finance_glossary():
+    # The public glossary exists only to route Data Commons questions; none
+    # of the finance-pack rules may leak into it.
+    for word in ("CFPB", "FDIC", "finance_demo", "fiscal", "bank"):
+        assert word.lower() not in packs.glossary("public").lower(), word
+        assert word.lower() not in packs.synthesis_rules("public").lower(), word
+    assert packs.glossary("public").startswith("Data Commons glossary")
     assert packs.glossary("finance").endswith("\n\n")
 
 

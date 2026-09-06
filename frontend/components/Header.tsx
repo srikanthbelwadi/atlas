@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import Logo from "@/components/Logo";
 import { FINANCE_ENABLED } from "@/lib/finance";
-import { PLACES_ENABLED } from "@/lib/places";
 
 const GITHUB_URL = "https://github.com/srikanthbelwadi/atlas";
 
@@ -46,11 +45,6 @@ export default function Header() {
           {FINANCE_ENABLED && (
             <Link href="/finance" className="nav-link">
               Finance
-            </Link>
-          )}
-          {PLACES_ENABLED && (
-            <Link href="/places" className="nav-link">
-              Places
             </Link>
           )}
           <Link href="/implementation" className="nav-link">

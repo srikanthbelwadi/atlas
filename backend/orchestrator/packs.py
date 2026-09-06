@@ -2,7 +2,8 @@
 Packs: named slices of the catalog that never see each other's sources.
 
 `public` is the original demo (atlasdata.world/) and the default everywhere a
-pack isn't named. `finance` is the finance section (/finance). A pack is only
+pack isn't named; since 2026-09-06 it also holds the two Google Data Commons
+templates. `finance` is the finance section (/finance). A pack is only
 servable when it's listed in ATLAS_PACKS_ENABLED — the deploy-time switch
 that lets the backend ship with the finance code present but inert
 (`ATLAS_PACKS_ENABLED=public`) until its catalog has been crawled and its
@@ -20,8 +21,42 @@ PACKS: dict[str, dict] = {
     "public": {
         "title": "Atlas",
         "tagline": "Ask a question, get a cited answer from large-scale data.",
-        "planner_glossary": "",
-        "synthesis_rules": "",
+        # The public prompt was empty until Google Data Commons joined the
+        # public catalog (two `ac.dc_*` templates, backend/accessor/
+        # datacommons_accessor.py). These lines exist only to route between
+        # those templates and the crawled BigQuery tables; they say nothing
+        # about finance, and the finance glossary is still finance-only.
+        "planner_glossary": (
+            "Data Commons glossary (apply when the candidates include ac.dc_indicator_for_place or "
+            "ac.dc_indicator_across_places):\n"
+            "- Those two templates answer REPORTED STATISTICS for a place — population, median "
+            "household income, median age, unemployment rate, poverty, households, GDP, GDP per capita, "
+            "life expectancy, fertility, CO2 emissions, diabetes/obesity prevalence, crime counts, "
+            "foreign-born population, education attainment — for countries, states, counties and cities "
+            "worldwide. Prefer them for such questions. A question about ONE or a FEW NAMED places (a "
+            "value, a trend, 'X vs Y') → ac.dc_indicator_for_place. A question that RANKS or lists ALL "
+            "places of a kind inside a parent ('which counties in California', 'by state', 'countries in "
+            "Africa', 'top 10 cities in Texas') → ac.dc_indicator_across_places.\n"
+            "- Prefer the BigQuery tables instead for weather and temperature, air quality readings, "
+            "COVID-19, crime incident records, 311 and city operations, campaign finance, baby names, "
+            "search trends and SEC filings — Data Commons does not hold those as place statistics.\n"
+            "- `indicator` is the statistic in the question's own words, or the matching curated key from "
+            "the parameter description. Never write a Data Commons variable id such as Count_Person.\n"
+            "- `place` / `parent_place` are names exactly as written ('Santa Clara County, CA', 'India', "
+            "'the world'); never a geoId or DCID. Several places to compare go in one comma-separated "
+            "`place` value.\n"
+            "- 'What is', 'how many', 'current' with no year → period='latest'. 'Trend', 'over time', "
+            "'since', 'change', 'history' → period='all' or a year_from. A named year → year. Never invent "
+            "a year. 'Top 10' → top_n=10; 'lowest/least/smallest' → order='asc'.\n\n"
+        ),
+        "synthesis_rules": (
+            "\n\nData Commons rule: when the evidence rows carry a `source` field, the first sentence must "
+            "name that source and the observation date(s) (e.g. 'According to Census Bureau ACS 5-year "
+            "estimates as published on Data Commons…'); if `date` differs across places, say the values "
+            "are the latest each place has, not one common year. Never restate figures with more "
+            "precision than the rows carry. Use `bar` for a ranking or a comparison of places, `line` "
+            "for a trend, `kpi_cards` for a single value; never choose `map` for these rows (no coordinates)."
+        ),
     },
     "finance": {
         "title": "Finance pack",
@@ -80,40 +115,6 @@ PACKS: dict[str, dict] = {
             "bank's internal loan_applications table (private)…'). Never restate a figure with "
             "more precision than the evidence carries. When the source is internal and undated, "
             "say the data carries no calendar dates rather than implying a period."
-        ),
-    },
-    "places": {
-        "title": "Places pack",
-        "tagline": (
-            "Reported statistics for any place — countries, states, counties, cities — from "
-            "Google Data Commons' harmonised graph of 200+ public sources, with the source named on every row."
-        ),
-        # Two templates only, so discovery's default top_k is plenty.
-        "planner_glossary": (
-            "Places-pack glossary (apply when binding parameters):\n"
-            "- Both candidates are Data Commons templates. A question about ONE or a FEW NAMED places "
-            "(a value, a trend, 'X vs Y') → ac.dc_indicator_for_place. A question that RANKS or lists "
-            "ALL places of a kind inside a parent ('which counties in California', 'by state', "
-            "'countries in Africa', 'top 10 cities in Texas') → ac.dc_indicator_across_places.\n"
-            "- `indicator` is the statistic in the question's own words, or the matching curated key from "
-            "the parameter description. Never write a Data Commons variable id such as Count_Person.\n"
-            "- `place` / `parent_place` are names exactly as written ('Santa Clara County, CA', 'India', "
-            "'the world'); never a geoId or DCID. Several places to compare go in one comma-separated "
-            "`place` value.\n"
-            "- 'What is', 'how many', 'current' with no year → period='latest'. 'Trend', 'over time', "
-            "'since', 'change', 'history' → period='all' or a year_from. A named year → year. Never invent "
-            "a year.\n"
-            "- 'Highest/most/largest' → order='desc' (default); 'lowest/least/smallest/worst unemployment' "
-            "→ order='asc' only when the question asks for the smallest values. 'Top 10' → top_n=10.\n"
-            "- Data Commons is deepest for the United States; country-level data is global.\n\n"
-        ),
-        "synthesis_rules": (
-            "\n\nPlaces-pack rules: the first sentence must name the source the rows carry (the `source` "
-            "field, e.g. 'According to the Census Bureau's ACS 5-year estimates as published on Data "
-            "Commons…') and the observation date(s). If `date` differs across places, say the values are "
-            "the latest each place has, not one common year. Never mix or restate figures with more "
-            "precision than the rows carry. Use `bar` for a ranking or a comparison of places, `line` for "
-            "a trend, `kpi_cards` for a single value; never choose `map` (the evidence has no coordinates)."
         ),
     },
 }

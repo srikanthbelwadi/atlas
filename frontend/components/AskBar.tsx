@@ -50,6 +50,17 @@ const EXAMPLES = [
   // Alphabet Inc.'s actual FY2023 10-K revenue — cited as human-reviewed,
   // no backtracking needed.
   "What was Google's revenue in 2023?",
+  // Added 2026-09-06 with Google Data Commons (ac.dc_indicator_for_place /
+  // ac.dc_indicator_across_places, backend/accessor/datacommons_accessor.py).
+  // Two of these — Japan/US life expectancy and India's population — are
+  // the very questions excluded above for years as "data-coverage gaps";
+  // Data Commons' harmonised place graph closes them. All live-verified in
+  // tests/golden/places_a.yaml (9/9) before landing here.
+  "What is the population of India?",
+  "Compare life expectancy in Japan and the United States.",
+  "How has median household income in Santa Clara County, CA changed over the last 10 years?",
+  "Which counties in California have the highest unemployment rate?",
+  "Rank US states by median household income, top 10.",
 ];
 
 export interface ExampleGroup {

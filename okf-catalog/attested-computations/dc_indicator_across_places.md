@@ -11,7 +11,7 @@ description: >
   lowest, top N. Child places come from Data Commons' containment graph;
   one source (facet) is used for the whole ranking.
 trust: human-reviewed
-pack: places
+pack: public
 reviewer: Bel
 reviewed_on: 2026-09-06
 stale_after: 2027-03-06

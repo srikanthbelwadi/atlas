@@ -27,17 +27,22 @@ same cost guardrails and the same trust tiers. BigQuery is the first
 executor and the one this instance is pointed at. Nothing in the design
 depends on the data being public.
 
+The public catalog is not only tables. Since 2026-09-06 it also holds
+**Google Data Commons** — a knowledge graph of ~250,000 reported statistics
+for countries, states, counties and cities, harmonised from 200+ public
+sources — reached through its REST API behind two reviewed templates
+(§8.4). "What is the population of India?" and "which counties in
+California have the highest unemployment rate?" are asked in the same ask
+bar as everything else; the planner routes between the Data Commons
+templates and the crawled BigQuery tables.
+
 One deployment serves more than one catalog. A **pack** is a named,
 isolated slice of the catalog (§5.2): the original demo is the `public`
-pack; the **finance pack** at `/finance` is the same platform pointed at
+pack, and the **finance pack** at `/finance` is the same platform pointed at
 a different catalog — public datasets standing in for a bank's complaint
 system, entity master and fundamentals warehouse, plus a genuinely private
-internal risk mart that only entitled accounts can query (§5.4, §8.3); and
-the **places pack** at `/places` points it at a source that is not a
-table at all — Google Data Commons' knowledge graph of ~250,000 reported
-statistics for countries, states, counties and cities, reached through
-its REST API behind two reviewed templates (§8.4). The finance pack is
-described in one place, §9; everything it and the places pack rely on —
+internal risk mart that only entitled accounts can query (§5.4, §8.3). The
+finance pack is described in one place, §9; everything it relies on —
 packs, entitlements, executors, receipts, the agent skills — is a platform
 feature documented in the sections before it.
 
@@ -218,8 +223,8 @@ marking added.
 ### 5.2 Packs — isolation at every layer
 
 A pack is a named slice of the catalog that discovery never mixes with
-another. `public` is the default everywhere a pack isn't named; `finance`
-and `places` are the other two. Every layer knows about packs, and every
+another. `public` is the default everywhere a pack isn't named; `finance` is
+the second. Every layer knows about packs, and every
 default keeps the public demo exactly as it was:
 
 | Layer | Mechanism | Where |
@@ -228,9 +233,9 @@ default keeps the public demo exactly as it was:
 | Crawler | each target lists its packs; a non-public row's `doc_id` is suffixed `#<pack>` and carries `metadata.pack` | `backend/crawler/targets.py`, `crawler/main.py` |
 | Discovery | the `VECTOR_SEARCH` base table and the hand-authored documents are both pre-filtered by pack | `backend/orchestrator/discovery.py` |
 | API | `POST /ask` takes an optional `pack`; a pack not listed in `ATLAS_PACKS_ENABLED` is refused with a 400, never answered from the public catalog | `backend/orchestrator/main.py` |
-| Prompts | a pack's glossary and synthesis rule are appended only for that pack; the public prompts are byte-identical (unit-tested) | `backend/orchestrator/packs.py`, `llm.py` |
+| Prompts | a pack's glossary and synthesis rule are appended only for that pack; the public glossary carries only the Data Commons routing rules and no finance rule can leak into it (unit-tested) | `backend/orchestrator/packs.py`, `llm.py` |
 | Budget | one $100/user/month ceiling across packs; the usage record gains a `by_pack` breakdown | `backend/orchestrator/guardrails.py` |
-| Frontend | `/finance/*` routes return 404 unless `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED=true`, `/places/*` unless `NEXT_PUBLIC_ATLAS_PLACES_ENABLED=true`; the header links are under the same flags | `frontend/app/finance/layout.tsx`, `lib/finance.ts`, `app/places/layout.tsx`, `lib/places.ts` |
+| Frontend | `/finance/*` routes return 404 unless `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED=true`; the header link is under the same flag | `frontend/app/finance/layout.tsx`, `lib/finance.ts` |
 
 The isolation is tested from both sides: the public regression set (§12)
 includes a CFPB question that must *not* find a finance source when asked
@@ -330,8 +335,8 @@ may fan out.
 | `sec_edgar` | `ac.sec_edgar_company_metric_by_year` (both packs) | resolves a company name or ticker to a CIK and returns one of 21 curated metrics by fiscal year, for one or more companies, from the EDGAR `company-facts` API | free API, 10 requests/s per IP |
 | `sec_edgar_annual` | `ac.sec_fact_annual_api` | one 10-K fact per fiscal year selected the way an analyst would: latest period end, ≥ 300-day duration, latest filing | free API |
 | `sec_ratio` | `ac.sec_ratio_by_year` | ROA, ROE, net margin, efficiency ratio and equity-to-assets from annual facts, with the averaging rule stated in the answer | free API |
-| `datacommons_place` | `ac.dc_indicator_for_place` (places pack) | resolves place name(s) and a plain-language indicator through Data Commons' own resolvers (`/v2/resolve`, curated key map first), then one `/v2/observation` call; a single source facet for the whole answer, named on every row | free API (key required); 20 s timeout, 32 MB response cap, 3,500-place and 5,000-row caps, 6 h in-process cache |
-| `datacommons_children` | `ac.dc_indicator_across_places` (places pack) | enumerates every place of a type inside a parent (`containedInPlace+`), fetches the indicator for all of them from one facet, ranks (latest per place or a named year) | same caps; a parent with more children than the cap is refused, never truncated |
+| `datacommons_place` | `ac.dc_indicator_for_place` (public) | resolves place name(s) and a plain-language indicator through Data Commons' own resolvers (`/v2/resolve`, curated key map first), then one `/v2/observation` call; a single source facet for the whole answer, named on every row | free API (key required); 20 s timeout, 32 MB response cap, 3,500-place and 5,000-row caps, 6 h in-process cache |
+| `datacommons_children` | `ac.dc_indicator_across_places` (public) | enumerates every place of a type inside a parent (`containedInPlace+`), fetches the indicator for all of them from one facet, ranks (latest per place or a named year) | same caps; a parent with more children than the cap is refused, never truncated |
 
 The metric-to-XBRL-tag map lives once, in
 `backend/accessor/xbrl_metrics.py`; the BigQuery template that reads the
@@ -529,10 +534,10 @@ or geography (the source shapes are anonymised), so the templates over them
 speak of "months before application" and the planner glossary forbids
 implying a period.
 
-### 8.4 Places pack — Google Data Commons
+### 8.4 Public pack — Google Data Commons
 
-The third pack (`places`, `okf-catalog/packs/places/`, route `/places`) has
-one source: **Google Data Commons**, the knowledge graph that harmonises
+The public pack's third kind of source, alongside crawled BigQuery tables
+and the SEC EDGAR API: **Google Data Commons**, the knowledge graph that harmonises
 200+ public datasets (Census, BLS, World Bank, WHO, CDC, UN, …) onto one
 place graph with ~250,000 statistical variables. It is reached through the
 REST v2 API (`backend/accessor/datacommons_accessor.py`), not BigQuery:
@@ -550,8 +555,11 @@ inside a parent. Neither lets the model write a DCID: places and variables
 are resolved by Data Commons' resolvers (a small curated key map first for
 the twenty most-asked indicators), the accessor keeps the first variable
 that actually has data for the place, and the receipt records the DCIDs,
-the canonical names and the facet that were chosen. Requires `DC_API_KEY`
-(Secret Manager) and `places` in `ATLAS_PACKS_ENABLED`; golden set
+the canonical names and the facet that were chosen. The public planner
+glossary (`packs.py`) routes between these templates and the BigQuery
+tables — reported place statistics go to Data Commons; weather, air
+quality, incidents, city operations, campaign finance and filings stay on
+their tables. Requires `DC_API_KEY` (Secret Manager); golden set
 `tests/golden/places_a.yaml` (9/9 live, 2026-09-06); `scripts/dc_smoke.py` measured 1.2–2.1 s per accessor call against the live API (≈0 s cached).
 
 ### 8.5 Attested computations — all 19
@@ -565,8 +573,8 @@ that no public document reads the private dataset.
 |---|---|---|---|---|
 | `ac.covid19_case_rate_by_county_year` | public | COVID-19 case rate by county and year | bigquery | ~$0.01 |
 | `ac.sec_edgar_company_metric_by_year` | public + finance | one of 21 curated metrics by fiscal year, one or more companies | sec_edgar | ~$0.005–0.07 |
-| `ac.dc_indicator_for_place` | places | a reported statistic for one or more named places — latest, one year, a range or the full history | datacommons_place | $0 (free API; Gemini tokens only) |
-| `ac.dc_indicator_across_places` | places | every county / state / city / country inside a parent, ranked by a reported statistic | datacommons_children | $0 (free API; Gemini tokens only) |
+| `ac.dc_indicator_for_place` | public | a reported statistic for one or more named places — latest, one year, a range or the full history | datacommons_place | $0 (free API; Gemini tokens only) |
+| `ac.dc_indicator_across_places` | public | every county / state / city / country inside a parent, ranked by a reported statistic | datacommons_children | $0 (free API; Gemini tokens only) |
 | `ac.cfpb_complaints_trend` | finance | complaint trend by product, company and grain | bigquery | ~$0.01 |
 | `ac.cfpb_timely_response_rate` | finance | a bank's timely-response rate versus deposit-size peers | bigquery (3 sources) | ~$0.01 |
 | `ac.cfpb_complaint_rate_per_deposits` | finance | complaints per $1 B of deposits | bigquery | ~$0.007 |
@@ -822,7 +830,7 @@ bound parameters, bytes, quotes and verdicts, and writes a report):
 | `finance_b` (filings and peers) | 6/6 | two-source reconciliation, curated ratios, the SIC-code screen, a four-claim fact-check; one honest refusal |
 | `finance_d` (private mart, entitled account) | 6/6 | four attested private answers with `unlocked_by` receipts; one ad-hoc question over the private ledger; one public question unaffected |
 | `finance_d_noaccess` (same account, entitlement revoked) | 4/4 | the same private questions refused naming the withheld sources; SQL naming the private table in the question never reaches BigQuery; a public question unaffected |
-| `places_a` (Data Commons) | 9/9 | eight attested places-pack answers with resolved DCIDs and a named source facet (13–19 s end to end; 54 s for the ~3,100-county expansion); one honest no-evidence answer. `public_regression` re-run 10/10 on the same revision |
+| `places_a` (Data Commons, public pack) | 9/9 | eight attested Data Commons answers with resolved DCIDs and a named source facet (13–19 s end to end; 54 s for the ~3,100-county expansion); one honest no-evidence answer. `public_regression` re-run 10/10 on the same revision |
 
 Five rounds of golden runs found and fixed: JSON serialisation of DATE rows
 in synthesis, multi-company EDGAR questions, the 21 GB SEC scan versus the

@@ -76,8 +76,7 @@ export default function SignInGate({ children }: { children: ReactNode }) {
           </h2>
           <p style={{ color: "var(--ink-dim)", maxWidth: 520, margin: "0 auto 30px", fontSize: "1.02rem" }}>
             Atlas turns a plain-English question into a cited, budgeted answer from any data source described in OKF —
-            a warehouse, an operational store, or an API — discovered, planned, and verified in real time. The demo runs
-            on BigQuery Public Datasets, the SEC EDGAR API and Google Data Commons.
+            a warehouse, an operational store, or an API — discovered, planned, and verified in real time.
           </p>
           <button onClick={() => signIn()} className="cta-button">
             Sign in with Google

@@ -3,6 +3,11 @@ Guarded Data Commons fetcher — the REST v2 API (`/v2/resolve`, `/v2/node`,
 `/v2/observation`) behind the `datacommons_place` and `datacommons_children`
 executors.
 
+The two templates live in the public catalog (`okf-catalog/attested-
+computations/dc_indicator_*.md`), so Data Commons questions are asked in
+the same ask bar as everything else; the public planner glossary in
+packs.py routes between them and the crawled BigQuery tables.
+
 Why an API accessor and not the crawler: Data Commons' BigQuery mirror
 (Analytics Hub) is deprecated — the docs page carries a turn-down notice as
 of 2026-08-26 — so the graph is reached the way SEC EDGAR is: one accessor

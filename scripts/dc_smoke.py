@@ -5,7 +5,7 @@ spike" from atlas-earth-engine-datacommons-assessment.md §6/§7.
 
     DC_API_KEY=... python scripts/dc_smoke.py            # from the repo root
 
-Runs each places-pack template the way the pipeline would (real resolvers,
+Runs each Data Commons template the way the pipeline would (real resolvers,
 real observation calls, cache cleared between cases), prints the resolved
 place/variable/facet and wall-clock per case, and exits non-zero if any
 case raises. No Google Cloud needed — only the key. Run it once from a

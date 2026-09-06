@@ -1,10 +1,10 @@
-# Places pack (Data Commons) golden set — run live against a revision with
-# ATLAS_PACKS_ENABLED including `places` and DC_API_KEY mounted:
+# Google Data Commons golden set (public catalog) — run live against a
+# revision with DC_API_KEY mounted:
 #   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
 #       --set tests/golden/places_a.yaml --report /tmp/places_a.md
 # Expectations check the routing path, the template, and the bound params
 # the accessor actually resolved (variable DCID, place DCIDs, source facet).
-pack: places
+pack: public
 questions:
   - q: "What is the population of India?"
     expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {variable_dcid: Count_Person, place_dcids: country/IND}}
@@ -22,6 +22,6 @@ questions:
     expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {place_dcids: country/DEU, year: 2019}}
   - q: "How many people in Texas have diabetes?"
     expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {place_dcids: geoId/48}}
-  # Honest refusal / no-evidence: nothing in the places pack answers this.
+  # Must NOT be answerable from the public pack (finance source):
   - q: "What are the main themes in CFPB complaint narratives about mortgages?"
     expect: {path: refusal_or_no_finance_source, forbidden_source_prefix: bq.bigquery-public-data.cfpb_complaints}

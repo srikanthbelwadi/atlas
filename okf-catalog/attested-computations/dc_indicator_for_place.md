@@ -11,7 +11,7 @@ description: >
   Data Commons' own resolvers, never guessed; one source (facet) is used
   for the whole answer and named in every row.
 trust: human-reviewed
-pack: places
+pack: public
 reviewer: Bel
 reviewed_on: 2026-09-06
 stale_after: 2027-03-06
@@ -78,7 +78,7 @@ computation:
 
 ## What this answers
 
-The reported-statistics half of the places pack: a number an agency
+Reported statistics in the public catalog: a number an agency
 published (Census, BLS, World Bank, WHO, CDC, …) for a named place, as
 Data Commons has harmonised it onto one place graph. One template covers
 the three shapes a plain question takes — a point value ("population of

@@ -1,12 +1,12 @@
 """
-Places pack (Data Commons): catalog and accessor unit tests, no network and
-no Google Cloud.
+Google Data Commons (public catalog): catalog and accessor unit tests, no
+network and no Google Cloud.
 
 Run from the repo root:  python -m pytest tests -q
 
 What these cover:
-  - the two Data Commons templates parse, declare governance, sit only in
-    the places pack, and the public catalog is unchanged;
+  - the two Data Commons templates parse, declare governance, and sit in
+    the public catalog only (never the finance pack);
   - the accessor's transport seam (`_http`) is the only thing mocked — the cache above it runs for real;
     everything above it — place resolution, indicator resolution with the
     existence check, single-facet selection, year filtering, latest-only,
@@ -56,8 +56,12 @@ PLACES_IDS = {"ac.dc_indicator_for_place", "ac.dc_indicator_across_places"}
 
 # --- catalog ---------------------------------------------------------------
 
+def dc_docs():
+    return [d for d in okf_loader.load_all(CATALOG, pack="public") if d.id in PLACES_IDS]
+
+
 def test_places_docs_parse_with_governance():
-    docs = okf_loader.load_all(CATALOG, pack="places")
+    docs = dc_docs()
     assert {d.id for d in docs} == PLACES_IDS
     for d in docs:
         assert d.type == "AttestedComputation"
@@ -71,23 +75,22 @@ def test_places_docs_parse_with_governance():
         assert required <= {"indicator", "place", "parent_place", "child_type"}, d.id
 
 
-def test_places_docs_do_not_leak_into_other_packs():
-    public = {d.id for d in okf_loader.load_all(CATALOG, pack="public")}
+def test_places_docs_are_public_only():
     finance = {d.id for d in okf_loader.load_all(CATALOG, pack="finance")}
-    assert not (PLACES_IDS & public) and not (PLACES_IDS & finance)
+    assert not (PLACES_IDS & finance)
+    assert "places" not in packs.PACKS, "Data Commons lives in the public catalog, not a pack of its own"
 
 
-def test_places_pack_is_flag_gated(monkeypatch):
-    monkeypatch.delenv("ATLAS_PACKS_ENABLED", raising=False)
-    assert not packs.is_enabled("places")
-    monkeypatch.setenv("ATLAS_PACKS_ENABLED", "public,finance,places")
-    assert packs.is_enabled("places")
-    assert packs.glossary("places").endswith("\n\n")
-    assert packs.glossary("public") == "" and packs.synthesis_rules("public") == ""
+def test_public_glossary_routes_between_the_two_templates():
+    g = packs.glossary("public")
+    assert "ac.dc_indicator_for_place" in g and "ac.dc_indicator_across_places" in g
+    assert "Never write a Data Commons variable id" in g
+    assert g.endswith("\n\n")
+    assert "never choose `map`" in packs.synthesis_rules("public")
 
 
 def test_curated_indicator_keys_are_advertised_in_both_templates():
-    for d in okf_loader.load_all(CATALOG, pack="places"):
+    for d in dc_docs():
         desc = next(p["description"] for p in d.computation["runtime"]["parameters"] if p["name"] == "indicator")
         for key in dc.CURATED_INDICATORS:
             assert key in desc, f"{d.id} does not advertise curated key {key}"
