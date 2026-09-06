@@ -8,8 +8,12 @@ description: >
   Africa or the world — by one reported statistic (population, median
   income, unemployment rate, GDP per capita, life expectancy, health
   prevalence, …), latest value per place or one named year. Highest,
-  lowest, top N. Child places come from Data Commons' containment graph;
-  one source (facet) is used for the whole ranking.
+  lowest, top N. Only for questions that ask about ALL places of a kind
+  inside a parent ("which counties in California…", "rank US states by…",
+  "the ten African countries with the lowest…"); a question about one
+  named place is ac.dc_indicator_for_place instead. Child places come
+  from Data Commons' containment graph; one source (facet) is used for the
+  whole ranking.
 trust: human-reviewed
 pack: public
 reviewer: Bel
@@ -18,7 +22,7 @@ stale_after: 2027-03-06
 version: "1"
 lifecycle: active
 citation_template: "Data Commons (datacommons.org) REST v2: child places enumerated with `containedInPlace+` from Data Commons' place graph, one observation per place from a single source facet (named per row as `source`, with provenance URL, measurement method and observation period), ranked by value."
-tags: [datacommons, places, ranking, counties, states, cities, countries, highest, lowest, top, compare, population, income, unemployment]
+tags: [datacommons, places, ranking, rank, "which counties", "which states", "which cities", "which countries", "by state", "by county", "across countries", counties, states, cities, countries, highest, lowest, "top 10", "top ten", most, least, largest, smallest, population, "median household income", "unemployment rate", "life expectancy", "gdp per capita"]
 source:
   kind: datacommons
   api: observation

@@ -7,7 +7,10 @@ description: >
   income, unemployment rate, GDP, life expectancy, CO2 emissions, health
   prevalence rates and ~250,000 more — for one or more named places
   (countries, states, counties, cities), as the latest value, one year, a
-  year range, or the full history. Places and variables are resolved by
+  year range, or the full history. "What is the population of India?",
+  "how has median household income in Santa Clara County changed over
+  the last 10 years?", "life expectancy in Japan vs the United States",
+  "unemployment rate in California". Places and variables are resolved by
   Data Commons' own resolvers, never guessed; one source (facet) is used
   for the whole answer and named in every row.
 trust: human-reviewed
@@ -18,7 +21,7 @@ stale_after: 2027-03-06
 version: "1"
 lifecycle: active
 citation_template: "Data Commons (datacommons.org) REST v2 observation API; place and variable resolved by Data Commons' resolvers; a single source facet (named per row as `source`, with its provenance URL, measurement method and observation period) is used for the whole answer."
-tags: [datacommons, places, population, income, unemployment, gdp, life-expectancy, emissions, health, statistic, trend, compare]
+tags: [datacommons, places, population, "population of a country", "population of a state", "population of a city", "median household income", "median income", "unemployment rate", "poverty rate", gdp, "gdp per capita", "life expectancy", "co2 emissions", "diabetes prevalence", "obesity", "median age", households, "housing units", "foreign born", "education attainment", statistic, "what is the", "how many people", trend, "over the last 10 years", "since 2010", compare, versus, country, state, county, city, "India", "Japan", "United States", "California", "Texas"]
 source:
   kind: datacommons
   api: observation
