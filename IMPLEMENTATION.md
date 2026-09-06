@@ -544,7 +544,7 @@ the twenty most-asked indicators), the accessor keeps the first variable
 that actually has data for the place, and the receipt records the DCIDs,
 the canonical names and the facet that were chosen. Requires `DC_API_KEY`
 (Secret Manager) and `places` in `ATLAS_PACKS_ENABLED`; golden set
-`tests/golden/places_a.yaml`; local timing check `scripts/dc_smoke.py`.
+`tests/golden/places_a.yaml` (9/9 live, 2026-09-06); `scripts/dc_smoke.py` measured 1.2–2.1 s per accessor call against the live API (≈0 s cached).
 
 ### 8.5 Attested computations — all 19
 
@@ -812,7 +812,7 @@ bound parameters, bytes, quotes and verdicts, and writes a report):
 | `finance_b` (filings and peers) | 6/6 | two-source reconciliation, curated ratios, the SIC-code screen, a four-claim fact-check; one honest refusal |
 | `finance_d` (private mart, entitled account) | 6/6 | four attested private answers with `unlocked_by` receipts; one ad-hoc question over the private ledger; one public question unaffected |
 | `finance_d_noaccess` (same account, entitlement revoked) | 4/4 | the same private questions refused naming the withheld sources; SQL naming the private table in the question never reaches BigQuery; a public question unaffected |
-| `places_a` (Data Commons) | pending live run | eight attested places-pack answers with resolved DCIDs and a named source facet; one honest no-evidence answer — run via `scripts/places_phase0.sh` |
+| `places_a` (Data Commons) | 9/9 | eight attested places-pack answers with resolved DCIDs and a named source facet (13–19 s end to end; 54 s for the ~3,100-county expansion); one honest no-evidence answer. `public_regression` re-run 10/10 on the same revision |
 
 Five rounds of golden runs found and fixed: JSON serialisation of DATE rows
 in synthesis, multi-company EDGAR questions, the 21 GB SEC scan versus the

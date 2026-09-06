@@ -56,12 +56,13 @@ env:
       - BUILD
       - RUNTIME
   # Places section (atlasdata.world/places) — Google Data Commons behind the
-  # `places` pack. Flip to "true" only after the orchestrator revision has
-  # ATLAS_PACKS_ENABLED=public,finance,places and DC_API_KEY mounted, and
-  # tests/golden/places_a.yaml passes against it. Off: /places 404s and the
-  # header shows no link.
+  # `places` pack. "true" since 2026-09-06, after the places-enabled
+  # orchestrator revision (ATLAS_PACKS_ENABLED=public,finance,places,
+  # DC_API_KEY from Secret Manager) passed tests/golden/places_a.yaml 9/9
+  # and public_regression 10/10. Set back to "false" to hide the section
+  # (the /places routes 404 and the header link disappears).
   - variable: NEXT_PUBLIC_ATLAS_PLACES_ENABLED
-    value: "false"
+    value: "true"
     availability:
       - BUILD
       - RUNTIME
