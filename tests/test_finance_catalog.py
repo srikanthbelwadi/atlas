@@ -344,3 +344,46 @@ def test_private_synth_columns_cover_private_setup_sql():
     names = {c for _, c in raw_cols} | set(re.findall(r"WHEN ([A-Z_]+) <", sql)) | {"DAYS_INSTALMENT"}
     missing = {c for c in names if f'"{c}"' not in synth and c not in ("step", "type", "amount")}
     assert not missing, f"synthetic generator lacks columns {missing}"
+
+
+def test_annual_series_one_10k_value_per_fiscal_year(monkeypatch):
+    """The multi-year EDGAR path: quarterlies dropped, restated prior years
+    superseded by the year's own 10-K, an amendment beating the original,
+    a January year-end labelled by the filer's own fiscal year, and
+    `years` keeping only the most recent N. Motivated by a live answer
+    that stopped at FY2023 because 593 raw facts hit the 500-row cap."""
+    from backend.accessor import sec_edgar_accessor as sec
+
+    def fact(val, start, end, fy, fp, form, filed):
+        return {"val": val, "start": start, "end": end, "fy": fy, "fp": fp, "form": form, "filed": filed}
+
+    facts = {
+        "entityName": "NVIDIA CORP",
+        "facts": {"us-gaap": {"Revenues": {"units": {"USD": [
+            # FY2023 10-K (year ends 2023-01-29): current year + restated prior year + a Q4 duration
+            fact(26_974, "2022-01-31", "2023-01-29", 2023, "FY", "10-K", "2023-02-24"),
+            fact(26_914, "2021-02-01", "2022-01-30", 2023, "FY", "10-K", "2023-02-24"),
+            fact(6_051, "2022-10-31", "2023-01-29", 2023, "FY", "10-K", "2023-02-24"),
+            # FY2022 10-K
+            fact(26_914, "2021-02-01", "2022-01-30", 2022, "FY", "10-K", "2022-03-18"),
+            fact(16_675, "2020-01-27", "2021-01-31", 2022, "FY", "10-K", "2022-03-18"),
+            # FY2024 10-K plus an amendment with a corrected figure
+            fact(60_922, "2023-01-30", "2024-01-28", 2024, "FY", "10-K", "2024-02-21"),
+            fact(60_922, "2023-01-30", "2024-01-28", 2024, "FY", "10-K/A", "2024-03-01"),
+            # FY2025 10-K
+            fact(130_497, "2024-01-29", "2025-01-26", 2025, "FY", "10-K", "2025-02-26"),
+            # a quarterly 10-Q, never part of the series
+            fact(44_062, "2025-01-27", "2025-04-27", 2026, "Q1", "10-Q", "2025-05-28"),
+        ]}}}},
+    }
+    monkeypatch.setattr(sec, "resolve_cik", lambda c: "0001045810")
+    monkeypatch.setattr(sec, "_http_get_json", lambda url: facts)
+
+    out = sec.fetch_annual_series("Nvidia", "revenue")
+    series = [(r["fiscal_year"], r["value"], r["form"]) for r in out["rows"]]
+    assert series == [(2021, 16_675, "10-K"), (2022, 26_914, "10-K"), (2023, 26_974, "10-K"),
+                      (2024, 60_922, "10-K/A"), (2025, 130_497, "10-K")], series
+    assert out["rows"][-1]["period_end"] == "2025-01-26", "January year-end keeps the filer's FY label"
+
+    last3 = sec.fetch_annual_series("Nvidia", "revenue", years=3)
+    assert [r["fiscal_year"] for r in last3["rows"]] == [2023, 2024, 2025]

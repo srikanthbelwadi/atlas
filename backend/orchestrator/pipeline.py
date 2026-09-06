@@ -459,18 +459,26 @@ def _fetch_one(candidate: dict, plan: dict, question: str, entitlements: list[st
         doc = okf_loader.load_by_id(candidate["source_id"])
         companies = _split_companies(params.get("company", ""))
         rows, names, ciks, concepts = [], [], [], []
+        fiscal_year = _as_int(params.get("fiscal_year"))
+        years = _as_int(params.get("years"))
         for company in companies:
-            result = sec_edgar_accessor.fetch_metric(
-                company=company,
-                metric=params.get("metric", ""),
-                fiscal_year=_as_int(params.get("fiscal_year")),
-            )
+            if fiscal_year is not None:
+                # One named year: every reported period for it, as before.
+                result = sec_edgar_accessor.fetch_metric(company=company, metric=params.get("metric", ""), fiscal_year=fiscal_year)
+            else:
+                # A history: one 10-K value per fiscal year, optionally the
+                # last N. Raw facts (quarterlies + restatements) ran to 593
+                # rows for three companies and tripped the 500-row evidence
+                # cap — see sec_edgar_accessor.fetch_annual_series.
+                result = sec_edgar_accessor.fetch_annual_series(company=company, metric=params.get("metric", ""), years=years)
             names.append(result["entity_name"]); ciks.append(result["cik"]); concepts.append(result["concept"])
             for r in result["rows"]:
                 rows.append({"company": result["entity_name"], **r} if len(companies) > 1 else r)
         bound_params = {"company": ", ".join(names), "cik": ", ".join(ciks), "metric": " | ".join(sorted(set(concepts)))}
-        if params.get("fiscal_year"):
-            bound_params["fiscal_year"] = params["fiscal_year"]
+        if fiscal_year is not None:
+            bound_params["fiscal_year"] = fiscal_year
+        else:
+            bound_params["selection"] = "one 10-K value per fiscal year, latest filing" + (f"; last {years} years" if years else "")
         return {"rows": rows, "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
 
     if candidate["kind"] == "sec_edgar_annual":

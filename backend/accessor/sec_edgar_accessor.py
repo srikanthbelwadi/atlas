@@ -303,6 +303,77 @@ def fetch_metric(company: str, metric: str, fiscal_year: int | None = None) -> d
     return {"rows": rows, "cik": cik, "entity_name": entity_name, "concept": concept_label}
 
 
+def fetch_annual_series(company: str, metric: str, years: int | None = None) -> dict:
+    """One reported value per fiscal year — the 10-K figure, from the latest
+    filing that reports it — for every year on file, optionally only the
+    most recent `years`. The multi-year form of fetch_annual_fact, and the
+    fix for a real answer: "revenue for Apple, Microsoft and Nvidia over
+    the last five fiscal years" fetched 593 raw facts (quarterlies, and
+    every year restated in each later 10-K), the pipeline's 500-row
+    evidence cap cut off Nvidia's recent years, and the narrative stopped
+    at 2023. Selection per year:
+
+      - annual filings only (10-K / 10-K/A, fiscal period FY); duration
+        metrics must span >= 300 days;
+      - a 10-K restates prior years under its own `fy`, so a row is
+        labelled with the filing's `fy` only when it is that filing's
+        current year (its latest period end); restated prior-year rows are
+        labelled by the calendar year their period ends in, and used only
+        when no filing of their own is on file;
+      - one row per period end: the latest `filed` wins.
+
+    Returns {"rows": [...], "cik", "entity_name", "concept",
+    "selection_rule"}; rows carry fiscal_year, value, unit, period_start,
+    period_end, form, filed."""
+    import datetime as _dt
+
+    base = fetch_metric(company, metric, None)
+    kind = period_kind(metric)
+    candidates = []
+    for r in base["rows"]:
+        if (r.get("form") or "") not in ("10-K", "10-K/A") or (r.get("fiscal_period") or "") != "FY":
+            continue
+        if not r.get("period_end"):
+            continue
+        if kind == "duration":
+            try:
+                span = (_dt.date.fromisoformat(r["period_end"]) - _dt.date.fromisoformat(r["period_start"])).days
+            except (TypeError, ValueError, KeyError):
+                continue
+            if span < 300:
+                continue
+        candidates.append(r)
+
+    # Current-year rows: the latest period end within each filing.
+    latest_end_in_filing: dict[tuple, str] = {}
+    for c in candidates:
+        key = (c.get("fiscal_year"), c.get("filed"))
+        if c["period_end"] > latest_end_in_filing.get(key, ""):
+            latest_end_in_filing[key] = c["period_end"]
+
+    by_end: dict[str, dict] = {}
+    for c in candidates:
+        current = latest_end_in_filing.get((c.get("fiscal_year"), c.get("filed"))) == c["period_end"]
+        label = c.get("fiscal_year") if current and c.get("fiscal_year") else int(c["period_end"][:4])
+        prev = by_end.get(c["period_end"])
+        # A filing's own current-year row beats a later restatement of the
+        # same period; otherwise the latest filing wins.
+        rank = (1 if current else 0, c.get("filed") or "")
+        if prev is None or rank > prev["_rank"]:
+            by_end[c["period_end"]] = {**c, "fiscal_year": label, "_rank": rank}
+
+    rows = sorted(by_end.values(), key=lambda r: (r["fiscal_year"], r["period_end"]))
+    # One row per fiscal-year label (a 52/53-week year can put two period
+    # ends in one label only in pathological data; keep the later one).
+    dedup: dict[int, dict] = {}
+    for r in rows:
+        dedup[r["fiscal_year"]] = r
+    rows = [{k: v for k, v in r.items() if k != "_rank"} for r in sorted(dedup.values(), key=lambda r: r["fiscal_year"])]
+    if years:
+        rows = rows[-int(years):]
+    return {**base, "rows": rows, "selection_rule": "10-K/FY per fiscal year, latest filing; duration >= 300 days"}
+
+
 def fetch_annual_fact(company: str, metric: str, fiscal_year: int) -> dict:
     """The single reported value of `metric` for one fiscal year, chosen the
     way an analyst would read the 10-K — and the way ac.sec_fact_from_bq

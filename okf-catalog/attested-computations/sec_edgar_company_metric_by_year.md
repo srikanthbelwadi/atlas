@@ -14,8 +14,8 @@ packs: [public, finance]
 reviewer: Bel
 reviewed_on: 2026-09-03
 stale_after: 2027-03-01
-version: "2"
-citation_template: "SEC EDGAR company-facts API; metric resolved to a curated US-GAAP/DEI tag (backend/accessor/xbrl_metrics.py), all reported periods as filed."
+version: "3"
+citation_template: "SEC EDGAR company-facts API; metric resolved to a curated US-GAAP/DEI tag (backend/accessor/xbrl_metrics.py). For a history: one annual value per fiscal year, the 10-K figure from the latest filing reporting it, labelled by the company's own fiscal year (Nvidia's FY2025 ends January 2025). For one named year: every reported period for that fiscal year as filed."
 tags: [sec, edgar, xbrl, company, financials, revenue, net-income]
 source:
   kind: sec_edgar
@@ -51,8 +51,15 @@ computation:
         required: false
         description: >
           Four-digit fiscal year, e.g. 2023. Only set this when the question
-          names a specific year; omit it to return every year SEC has on
-          file for that metric.
+          names a specific year; omit it to return one annual value per
+          fiscal year on file for that metric.
+      - name: years
+        type: INTEGER
+        required: false
+        description: >
+          How many most-recent fiscal years to return, when the question
+          says so: "the last five fiscal years" → 5, "past decade" → 10.
+          Omit for a single named year or for the full history.
 ---
 
 ## Why this exists as a curated mapping, not free-form XBRL
@@ -73,6 +80,17 @@ This mirrors the same trust pattern as
 `covid19_case_rate_by_county_year.md`'s hand-written SQL template: the model
 extracts parameter *values*, a person has already reviewed the underlying
 lookup.
+
+## One value per fiscal year
+
+Without a `fiscal_year`, the accessor returns the annual series
+(`fetch_annual_series`): 10-K filings only, one row per fiscal year, the
+latest filing that reports the year, duration facts spanning at least 300
+days. The raw company-facts feed also carries every quarter and every
+later restatement of each year — nearly 600 facts for three large filers —
+which tripped the pipeline's 500-row evidence cap and cut a "last five
+years" answer short on 2026-09-06. Fiscal-year labels follow the filer's
+own convention (Nvidia's year ending January 2025 is FY2025).
 
 ## Coverage and limits
 
