@@ -147,6 +147,21 @@ check. Promote with `gcloud run services update-traffic atlas-orchestrator
 --to-latest`, then set `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED` to `"true"` in
 `frontend/apphosting.yaml`.
 
+## Places pack (Data Commons)
+
+`scripts/places_phase0.sh` (needs `DC_API_KEY` in the environment — a free
+key from https://apikeys.datacommons.org with the REST V2 API enabled)
+stores the key in Secret Manager as `dc-api-key`, grants the orchestrator's
+service account access, runs `scripts/dc_smoke.py` against the live API,
+and deploys a **no-traffic** revision tagged `places` with
+`ATLAS_PACKS_ENABLED=public,finance,places` and `DC_API_KEY` mounted from
+the secret. Golden runs: `tests/golden/places_a.yaml` against the tagged
+URL, plus `public_regression.yaml` and `finance_a.yaml` as the
+did-not-interfere checks. Promote with `gcloud run services update-traffic
+atlas-orchestrator --to-latest`, then set `NEXT_PUBLIC_ATLAS_PLACES_ENABLED`
+to `"true"` in `frontend/apphosting.yaml`. No BigQuery, crawler or Firestore
+changes — Data Commons is an API source like SEC EDGAR.
+
 ### Private internal data (use case D)
 
 Two datasets in the project that are never public: `finance_demo_raw`

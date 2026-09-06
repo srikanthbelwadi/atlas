@@ -61,7 +61,7 @@ import asyncio
 import time
 
 from . import access, discovery, guardrails, llm, packs
-from ..accessor import bigquery_accessor, okf_loader, sec_edgar_accessor
+from ..accessor import bigquery_accessor, datacommons_accessor, okf_loader, sec_edgar_accessor
 
 MAX_BACKTRACKS = 1
 
@@ -495,6 +495,21 @@ def _fetch_one(candidate: dict, plan: dict, question: str, entitlements: list[st
         bound_params = {"company": result["entity_name"], "cik": result["cik"], "ratio": params.get("ratio"),
                         "fiscal_year": params.get("fiscal_year"), "definition": result.get("definition")}
         return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": bound_params, "doc": doc}
+
+    if candidate["kind"] == "datacommons":
+        # Places pack: Data Commons REST v2 behind two reviewed templates
+        # (datacommons_place / datacommons_children — see
+        # datacommons_accessor.py). Free, unbilled, no SQL; like sec_edgar,
+        # a resolvable place with no observation returns rows=[] and flows
+        # into the same empty-result handling, while unresolvable places /
+        # indicators, a missing API key, entity-cap hits and network errors
+        # raise DataCommonsError into the generic fetch-error branch. The
+        # bound params carry what the resolvers actually chose (place and
+        # variable DCIDs, the facet/source) so the receipt shows it.
+        doc = okf_loader.load_by_id(candidate["source_id"])
+        executor = doc.executor if doc else "datacommons_place"
+        result = datacommons_accessor.run(executor, plan.get("params", {}))
+        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": result["params"], "doc": doc}
 
     # Non-BigQuery source ported from NeuralKG, described purely via OKF.
     doc = okf_loader.load_by_id(candidate["source_id"])

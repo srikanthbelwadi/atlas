@@ -55,6 +55,16 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  # Places section (atlasdata.world/places) — Google Data Commons behind the
+  # `places` pack. Flip to "true" only after the orchestrator revision has
+  # ATLAS_PACKS_ENABLED=public,finance,places and DC_API_KEY mounted, and
+  # tests/golden/places_a.yaml passes against it. Off: /places 404s and the
+  # header shows no link.
+  - variable: NEXT_PUBLIC_ATLAS_PLACES_ENABLED
+    value: "false"
+    availability:
+      - BUILD
+      - RUNTIME
   # Shown as a mailto link wherever a user needs a person: the "awaiting
   # approval" state on /finance and the "you can't access this private data"
   # refusal card. Matches the backend's default ATLAS_ADMIN_EMAILS. Leave

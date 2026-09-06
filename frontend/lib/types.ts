@@ -24,7 +24,7 @@ export type TraceEventName =
   | "claim.verdict";
 
 // Catalog packs (backend/orchestrator/packs.py). Omitted = "public".
-export type Pack = "public" | "finance";
+export type Pack = "public" | "finance" | "places";
 
 export interface TraceEvent {
   event: TraceEventName;

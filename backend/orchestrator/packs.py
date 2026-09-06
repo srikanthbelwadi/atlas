@@ -82,6 +82,40 @@ PACKS: dict[str, dict] = {
             "say the data carries no calendar dates rather than implying a period."
         ),
     },
+    "places": {
+        "title": "Places pack",
+        "tagline": (
+            "Reported statistics for any place — countries, states, counties, cities — from "
+            "Google Data Commons' harmonised graph of 200+ public sources, with the source named on every row."
+        ),
+        # Two templates only, so discovery's default top_k is plenty.
+        "planner_glossary": (
+            "Places-pack glossary (apply when binding parameters):\n"
+            "- Both candidates are Data Commons templates. A question about ONE or a FEW NAMED places "
+            "(a value, a trend, 'X vs Y') → ac.dc_indicator_for_place. A question that RANKS or lists "
+            "ALL places of a kind inside a parent ('which counties in California', 'by state', "
+            "'countries in Africa', 'top 10 cities in Texas') → ac.dc_indicator_across_places.\n"
+            "- `indicator` is the statistic in the question's own words, or the matching curated key from "
+            "the parameter description. Never write a Data Commons variable id such as Count_Person.\n"
+            "- `place` / `parent_place` are names exactly as written ('Santa Clara County, CA', 'India', "
+            "'the world'); never a geoId or DCID. Several places to compare go in one comma-separated "
+            "`place` value.\n"
+            "- 'What is', 'how many', 'current' with no year → period='latest'. 'Trend', 'over time', "
+            "'since', 'change', 'history' → period='all' or a year_from. A named year → year. Never invent "
+            "a year.\n"
+            "- 'Highest/most/largest' → order='desc' (default); 'lowest/least/smallest/worst unemployment' "
+            "→ order='asc' only when the question asks for the smallest values. 'Top 10' → top_n=10.\n"
+            "- Data Commons is deepest for the United States; country-level data is global.\n\n"
+        ),
+        "synthesis_rules": (
+            "\n\nPlaces-pack rules: the first sentence must name the source the rows carry (the `source` "
+            "field, e.g. 'According to the Census Bureau's ACS 5-year estimates as published on Data "
+            "Commons…') and the observation date(s). If `date` differs across places, say the values are "
+            "the latest each place has, not one common year. Never mix or restate figures with more "
+            "precision than the rows carry. Use `bar` for a ranking or a comparison of places, `line` for "
+            "a trend, `kpi_cards` for a single value; never choose `map` (the evidence has no coordinates)."
+        ),
+    },
 }
 
 

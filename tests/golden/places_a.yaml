@@ -1,0 +1,27 @@
+# Places pack (Data Commons) golden set — run live against a revision with
+# ATLAS_PACKS_ENABLED including `places` and DC_API_KEY mounted:
+#   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
+#       --set tests/golden/places_a.yaml --report /tmp/places_a.md
+# Expectations check the routing path, the template, and the bound params
+# the accessor actually resolved (variable DCID, place DCIDs, source facet).
+pack: places
+questions:
+  - q: "What is the population of India?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {variable_dcid: Count_Person, place_dcids: country/IND}}
+  - q: "How has median household income in Santa Clara County, CA changed over the last 10 years?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {variable_dcid: Median_Income_Household, place_dcids: geoId/06085}, kind: line}
+  - q: "Compare life expectancy in Japan and the United States."
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {variable_dcid: LifeExpectancy_Person, place_dcids: "country/JPN, country/USA"}}
+  - q: "Which counties in California have the highest unemployment rate?"
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, params_include: {variable_dcid: UnemploymentRate_Person, parent_dcid: geoId/06, child_type: County}}
+  - q: "Rank US states by median household income, top 10."
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, params_include: {parent_dcid: country/USA, child_type: State, top_n: 10}}
+  - q: "Which ten countries in Africa have the lowest life expectancy?"
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, params_include: {parent_dcid: africa, child_type: Country, order: asc}}
+  - q: "What was the GDP per capita of Germany in 2019?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {place_dcids: country/DEU, year: 2019}}
+  - q: "How many people in Texas have diabetes?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {place_dcids: geoId/48}}
+  # Honest refusal / no-evidence: nothing in the places pack answers this.
+  - q: "What are the main themes in CFPB complaint narratives about mortgages?"
+    expect: {path: refusal_or_no_finance_source, forbidden_source_prefix: bq.bigquery-public-data.cfpb_complaints}
