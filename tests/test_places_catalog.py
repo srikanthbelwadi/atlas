@@ -87,6 +87,7 @@ def test_public_glossary_routes_between_the_two_templates():
     assert "Never write a Data Commons variable id" in g
     assert "EVEN WHEN a BigQuery table has a higher `score`" in g, "the override clause is what beats the crawled tables' rank"
     assert "names one place: it is for_place" in g
+    assert "Health prevalence rates" in g
     assert g.endswith("\n\n")
     assert "never choose `map`" in packs.synthesis_rules("public")
 

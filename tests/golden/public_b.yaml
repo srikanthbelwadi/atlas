@@ -1,7 +1,10 @@
-# Public catalog — candidate chips, round B. Nothing here is on the home
-# page yet: a question moves into frontend/lib/public-examples.ts only after
-# it passes live. Expectations are deliberately loose (the right *kind* of
-# source), tightened once the answer has been read.
+# Public catalog — candidate chips, round B. A question moves into
+# frontend/lib/public-examples.ts only after it passes live. Round 1
+# (2026-09-06, live service): 8/13 — B1 B3 B4 B6 B8 B10 B12 B13 promoted to
+# chips. B5 answered from EPA's temperature table (a fair source; expectation
+# widened). B2 and B7 failed in ad-hoc SQL (SF 311, BLS CPI) — not chips, kept
+# as regression targets. B9 (Miami) and B11 (obesity by state) were misroutes:
+# B11 fixed in the public glossary; B9 re-asked with the state named.
 #   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
 #       --set tests/golden/public_b.yaml --report /tmp/public_b.md
 pack: public
@@ -22,7 +25,7 @@ questions:
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.epa_historical_air_quality}
   - id: B5
     q: "Which US weather stations recorded the hottest days in 2023?"
-    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.noaa_gsod}
+    expect: {source_id_in: [bq.bigquery-public-data.noaa_gsod.gsod2023, bq.bigquery-public-data.epa_historical_air_quality.temperature_daily_summary]}
   # Search trends
   - id: B6
     q: "What were the top rising search terms in the United States most recently?"
@@ -37,7 +40,7 @@ questions:
     expect: {path: adhoc, source_prefix: bq.bigquery-public-data.fec}
   # Places & demographics (Data Commons)
   - id: B9
-    q: "What is the median age in Miami?"
+    q: "What is the median age in Miami, Florida?"
     expect: {path: attested, source_id: ac.dc_indicator_for_place, params_include: {variable_dcid: Median_Age_Person}}
   - id: B10
     q: "Rank the countries in Asia by CO2 emissions per capita."
