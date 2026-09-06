@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import Logo from "@/components/Logo";
 
-const DATASET_CATEGORIES = ["SEC filings (API)", "Labor & economics", "Census & demographics", "Air quality & climate", "Public health", "City operations", "Campaign finance"];
+const DATASET_CATEGORIES = ["SEC filings (API)", "Data Commons — any place, 250k statistics (API)", "Labor & economics", "Census & demographics", "Air quality & climate", "Public health", "City operations", "Campaign finance"];
 
 const HOW_IT_WORKS = [
   {
@@ -16,7 +16,7 @@ const HOW_IT_WORKS = [
   {
     title: "Plan",
     body:
-      "Gemini reads the matched dataset's real, crawled schema and drafts a query against it — it can't invent a column that isn't there, because it never sees the dataset without seeing its schema first.",
+      "Gemini reads the matched dataset's real, crawled schema and drafts a query against it — it can't invent a column that isn't there, because it never sees the dataset without seeing its schema first. For a reviewed template it only binds parameters; for an API source like Data Commons it passes the question's own words, and the source's own resolver turns them into identifiers.",
   },
   {
     title: "Fetch & verify",
@@ -77,7 +77,7 @@ export default function SignInGate({ children }: { children: ReactNode }) {
           <p style={{ color: "var(--ink-dim)", maxWidth: 520, margin: "0 auto 30px", fontSize: "1.02rem" }}>
             Atlas turns a plain-English question into a cited, budgeted answer from any data source described in OKF —
             a warehouse, an operational store, or an API — discovered, planned, and verified in real time. The demo runs
-            on BigQuery Public Datasets and the SEC EDGAR API.
+            on BigQuery Public Datasets, the SEC EDGAR API and Google Data Commons.
           </p>
           <button onClick={() => signIn()} className="cta-button">
             Sign in with Google
@@ -118,7 +118,7 @@ export default function SignInGate({ children }: { children: ReactNode }) {
 
         {/* Dataset categories */}
         <section className="container" style={{ padding: "0 0 56px", textAlign: "center" }}>
-          <div style={{ color: "var(--ink-dim)", fontSize: "0.82rem", marginBottom: 14 }}>In the demo catalog today — hundreds of millions of rows across BigQuery datasets, plus the SEC EDGAR API</div>
+          <div style={{ color: "var(--ink-dim)", fontSize: "0.82rem", marginBottom: 14 }}>In the demo catalog today — hundreds of millions of rows across BigQuery datasets, plus the SEC EDGAR and Data Commons APIs</div>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, maxWidth: 520, margin: "0 auto" }}>
             {DATASET_CATEGORIES.map((c) => (
               <span key={c} className="pill">

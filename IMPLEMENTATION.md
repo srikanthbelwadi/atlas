@@ -29,11 +29,15 @@ depends on the data being public.
 
 One deployment serves more than one catalog. A **pack** is a named,
 isolated slice of the catalog (§5.2): the original demo is the `public`
-pack, and the **finance pack** at `/finance` is the same platform pointed at
+pack; the **finance pack** at `/finance` is the same platform pointed at
 a different catalog — public datasets standing in for a bank's complaint
 system, entity master and fundamentals warehouse, plus a genuinely private
-internal risk mart that only entitled accounts can query (§5.4, §8.3). The
-finance pack is described in one place, §9; everything it relies on —
+internal risk mart that only entitled accounts can query (§5.4, §8.3); and
+the **places pack** at `/places` points it at a source that is not a
+table at all — Google Data Commons' knowledge graph of ~250,000 reported
+statistics for countries, states, counties and cities, reached through
+its REST API behind two reviewed templates (§8.4). The finance pack is
+described in one place, §9; everything it and the places pack rely on —
 packs, entitlements, executors, receipts, the agent skills — is a platform
 feature documented in the sections before it.
 
@@ -214,9 +218,9 @@ marking added.
 ### 5.2 Packs — isolation at every layer
 
 A pack is a named slice of the catalog that discovery never mixes with
-another. `public` is the default everywhere a pack isn't named; `finance` is
-the second. Every layer knows about packs, and every default keeps the
-public demo exactly as it was:
+another. `public` is the default everywhere a pack isn't named; `finance`
+and `places` are the other two. Every layer knows about packs, and every
+default keeps the public demo exactly as it was:
 
 | Layer | Mechanism | Where |
 |---|---|---|
@@ -226,7 +230,7 @@ public demo exactly as it was:
 | API | `POST /ask` takes an optional `pack`; a pack not listed in `ATLAS_PACKS_ENABLED` is refused with a 400, never answered from the public catalog | `backend/orchestrator/main.py` |
 | Prompts | a pack's glossary and synthesis rule are appended only for that pack; the public prompts are byte-identical (unit-tested) | `backend/orchestrator/packs.py`, `llm.py` |
 | Budget | one $100/user/month ceiling across packs; the usage record gains a `by_pack` breakdown | `backend/orchestrator/guardrails.py` |
-| Frontend | `/finance/*` routes return 404 unless `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED=true`; the header link is under the same flag | `frontend/app/finance/layout.tsx`, `lib/finance.ts` |
+| Frontend | `/finance/*` routes return 404 unless `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED=true`, `/places/*` unless `NEXT_PUBLIC_ATLAS_PLACES_ENABLED=true`; the header links are under the same flags | `frontend/app/finance/layout.tsx`, `lib/finance.ts`, `app/places/layout.tsx`, `lib/places.ts` |
 
 The isolation is tested from both sides: the public regression set (§12)
 includes a CFPB question that must *not* find a finance source when asked
@@ -312,7 +316,11 @@ this model unchanged.
 An OKF document declares which **executor** runs it. All of them share the
 same fetch entry point (`_fetch_one`), record their steps into the same
 walkthrough, and are subject to the same per-user budget; they differ in
-what a "query" is.
+what a "query" is. The BigQuery executors are guarded in bytes; the API
+executors (SEC EDGAR, Data Commons) are free per request, so their
+guardrails are wall-clock timeouts, response-size caps and — for Data
+Commons — entity and row caps on how far a "every county in…" expansion
+may fan out.
 
 | Executor | Used by | What it does | Guardrails |
 |---|---|---|---|
@@ -771,7 +779,9 @@ crawler's target list — optionally with `visibility: private` and the
 entitlement it needs — and run the crawl. The tables become
 `machine-confirmed` candidates with real schemas. Optionally add a reviewed
 `Table` document for the meaning a schema can't carry. For an API: one OKF
-document plus one accessor module, as the SEC EDGAR source shows.
+document plus one accessor module, as the SEC EDGAR source shows and the
+Data Commons source (`backend/accessor/datacommons_accessor.py`, two
+templates, one new `kind` branch in `_fetch_one`) repeats.
 
 **A reviewed template.** Write an `AttestedComputation` document: the SQL
 (or accessor call), typed parameters with defaults, the sources it touches,
