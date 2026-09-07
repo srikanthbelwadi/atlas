@@ -55,6 +55,20 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  # Map answers (atlas-earth-engine-ui-plan.md, phase A): "false" hides the
+  # MapLibre map under a `choropleth` answer and leaves the ranked table.
+  # The basemap is context only — if its host is unreachable the polygons
+  # still render on a plain background.
+  - variable: NEXT_PUBLIC_ATLAS_MAPS_ENABLED
+    value: "true"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ATLAS_BASEMAP_STYLE
+    value: https://tiles.openfreemap.org/styles/positron
+    availability:
+      - BUILD
+      - RUNTIME
   # Shown as a mailto link wherever a user needs a person: the "awaiting
   # approval" state on /finance and the "you can't access this private data"
   # refusal card. Matches the backend's default ATLAS_ADMIN_EMAILS. Leave

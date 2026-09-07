@@ -1,6 +1,7 @@
 "use client";
 
 import { Answer, TrustLevel, VerdictRow } from "@/lib/types";
+import ChoroplethViz from "@/components/viz/ChoroplethViz";
 
 const TRUST_LABEL: Record<TrustLevel, string> = {
   "human-reviewed": "Human-reviewed",
@@ -341,6 +342,10 @@ export default function AnswerCanvas({ answer }: { answer: Answer }) {
   const visualization = answer.visualization ?? { kind: "table", data: "[]" };
   const vizData = visualization.data ?? "[]";
   const Viz = VIZ_COMPONENTS[visualization.kind] || TableViz;
+  // Map answers carry their boundaries in `answer.geo`, attached by the
+  // backend — the one kind whose renderer needs more than the model's
+  // `data` string (see components/viz/ChoroplethViz.tsx).
+  const vizNode = visualization.kind === "choropleth" ? <ChoroplethViz data={vizData} geo={answer.geo} /> : <Viz data={vizData} />;
 
   return (
     <div
@@ -356,7 +361,7 @@ export default function AnswerCanvas({ answer }: { answer: Answer }) {
     >
       <p style={{ fontSize: "1.05rem", margin: 0, lineHeight: 1.65 }}>{answer.narrative}</p>
 
-      <Viz data={vizData} />
+      {vizNode}
 
       {citations.length > 0 && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>

@@ -64,6 +64,7 @@ import time
 
 from . import access, discovery, guardrails, llm, packs
 from ..accessor import bigquery_accessor, datacommons_accessor, okf_loader, sec_edgar_accessor
+from ..geo import boundaries
 
 MAX_BACKTRACKS = 1
 
@@ -333,6 +334,11 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
             }
             if coverage["truncated"]:
                 evidence["coverage"] = coverage
+            # Map answers (atlas-earth-engine-ui-plan.md §2): synthesis may
+            # choose `choropleth` only when the rows carry place keys the
+            # geo service can turn into boundaries. It never sees geometry.
+            if boundaries.geo_capable(sent_rows):
+                evidence["geo_capable"] = True
             if receipt_doc is not None and getattr(receipt_doc, "citation_template", None):
                 evidence["definition"] = receipt_doc.citation_template
             break
@@ -364,6 +370,14 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
         }
         presentation, synth_usage = await _to_thread(llm.synthesize, question, evidence, pack)
         walkthrough["token_usage"]["synthesize"] = synth_usage
+        geo_payload = None
+        if (presentation.get("visualization") or {}).get("kind") == "choropleth":
+            # Boundaries come from the backend, joined on place ids, after
+            # the model has chosen the kind. A weak join downgrades to a bar
+            # chart of the same rows and says so in the walkthrough.
+            geo_payload, note = await _to_thread(finalize_map, presentation, evidence["rows"])
+            walkthrough["geo"] = {k: v for k, v in (geo_payload or {}).items() if k != "features"} if geo_payload else {"ok": False, "reason": note}
+            yield {"event": "synthesize.progress", "data": {"stage": "map", "note": note}}
         yield {
             "event": "synthesize.progress",
             "data": {
@@ -407,6 +421,8 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
             "elapsed_s": elapsed(),
             "walkthrough": finalize(),
         }
+        if geo_payload and geo_payload.get("ok"):
+            answer["geo"] = {k: geo_payload[k] for k in ("features", "key_field", "value_field", "label_field", "bounds", "detail", "matched")}
         if withheld or (receipt_doc is not None and access.is_private(receipt_doc)):
             answer["access"] = walkthrough["access"]
         receipt = build_receipt(receipt_doc, walkthrough, bytes_billed, cost)
@@ -637,6 +653,49 @@ def bound_evidence(rows: list[dict], cap: int) -> tuple[list[dict], dict]:
     for g, rs in groups.items():
         out.extend(chronological(recent_first(rs)[: quota[g]]))
     return out, {"rows_total": total, "rows_sent": len(out), "truncated": True, "stratified_by": stratum, "ordered_by": order}
+
+
+def finalize_map(presentation: dict, rows: list[dict]) -> tuple[dict | None, str]:
+    """For a `choropleth` presentation: attach boundaries for the rows'
+    places (backend/geo/boundaries.py). On a weak join, rewrite the
+    presentation in place to a `bar` of the same rows so the answer still
+    renders, and return the reason. Returns (geo_payload_or_None, note)."""
+    import json as _json
+    viz = presentation.get("visualization") or {}
+    try:
+        spec = _json.loads(viz.get("data") or "{}")
+    except ValueError:
+        spec = {}
+    if not isinstance(spec, dict):
+        spec = {}
+    value_field = spec.get("value_field") or "value"
+    label_field = spec.get("label_field") or None
+    try:
+        geo = boundaries.attach(rows, value_field, label_field)
+    except Exception as exc:  # noqa: BLE001 — a boundary fetch failure must never lose the answer
+        geo = {"ok": False, "reason": f"boundary lookup failed: {exc}", "features": {"type": "FeatureCollection", "features": []}}
+    if geo.get("ok"):
+        spec.setdefault("unit", "")
+        spec.setdefault("title", "")
+        viz["data"] = _json.dumps(spec)
+        return geo, f"Attached boundaries for {geo['matched']} places ({geo['detail']})"
+    # Downgrade: same rows, bar chart, ranked by value.
+    labelled = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        v = boundaries._number(r.get(value_field))
+        if v is None:
+            continue
+        lab = r.get(label_field) if label_field else None
+        if lab is None:
+            lab = r.get("place") or r.get("name") or r.get("place_name") or r.get("label") or ""
+        labelled.append((str(lab), v))
+    labelled.sort(key=lambda t: t[1], reverse=True)
+    labelled = labelled[:40]
+    viz["kind"] = "bar"
+    viz["data"] = _json.dumps({"labels": [l for l, _ in labelled], "values": [v for _, v in labelled], "label": spec.get("title") or value_field})
+    return None, f"Map downgraded to a bar chart: {geo.get('reason')}"
 
 
 def _withheld_message(withheld: list[dict]) -> str:

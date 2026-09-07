@@ -1,0 +1,31 @@
+# Map answers, phase A (atlas-earth-engine-ui-plan.md): a per-place ranking
+# or comparison across five or more places renders as a `choropleth` with
+# boundaries attached by the backend (walkthrough.geo / answer.geo); a single
+# place or a trend for one place stays a chart. Run against a revision with
+# the geo service (backend/geo/) deployed:
+#   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
+#       --set tests/golden/maps_a.yaml --report /tmp/maps_a.md
+pack: public
+questions:
+  - id: M1
+    q: "Which counties in California have the highest unemployment rate?"
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, kind: choropleth, geo_matched_min: 20}
+  - id: M2
+    q: "Rank US states by median household income, top 10."
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, kind: choropleth, geo_matched_min: 10}
+  - id: M3
+    q: "Which ten countries in Africa have the lowest life expectancy?"
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, kind: choropleth, geo_matched_min: 8}
+  - id: M4
+    q: "Which US states have the highest obesity rate?"
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, kind: choropleth, geo_matched_min: 20}
+  - id: M5
+    q: "Rank the countries in Asia by CO2 emissions per capita."
+    expect: {path: attested, source_id: ac.dc_indicator_across_places, kind: choropleth, geo_matched_min: 20}
+  # Not maps: one place, or a trend for one place.
+  - id: M6
+    q: "What is the population of India?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, kind: kpi_cards}
+  - id: M7
+    q: "How has median household income in Santa Clara County, CA changed over the last 10 years?"
+    expect: {path: attested, source_id: ac.dc_indicator_for_place, kind: line}

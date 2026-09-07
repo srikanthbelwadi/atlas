@@ -76,7 +76,7 @@ PRESENTATION_SCHEMA = {
         "visualization": {
             "type": "OBJECT",
             "properties": {
-                "kind": {"type": "STRING", "enum": ["table", "bar", "line", "kpi_cards", "map", "infographic"]},
+                "kind": {"type": "STRING", "enum": ["table", "bar", "line", "kpi_cards", "map", "infographic", "choropleth"]},
                 "data": {"type": "STRING", "description": "JSON-encoded data payload for the chosen kind"},
             },
             "required": ["kind", "data"],
@@ -281,9 +281,15 @@ def synthesize(question: str, evidence: dict, pack: str = packs.DEFAULT_PACK) ->
         "complete or that anything absent from the rows does not exist.\n\n"
         "Choose the visualization kind that best fits the shape of the "
         "evidence (a single figure -> kpi_cards, a ranking/comparison -> "
-        "bar, a time series -> line, a list of records -> table, a "
-        "geographic breakdown -> map; reserve infographic for a finding a "
-        "plain chart would undersell).\n\n"
+        "bar, a time series -> line, a list of records -> table; reserve "
+        "infographic for a finding a plain chart would undersell). "
+        "If the evidence has geo_capable=true AND the rows are one value "
+        "per place for five or more places (counties, states, countries, "
+        "cities), choose choropleth: the places are drawn as coloured "
+        "boundaries from the rows' own place ids by the server — you name "
+        "the columns, you never write coordinates or geometry. A trend for "
+        "one place is still a line; a single place's value is still "
+        "kpi_cards. Never choose map.\n\n"
         "The \"data\" field must be a JSON-encoded string using EXACTLY "
         "this shape for the chosen kind — the frontend renderer keys off "
         "these exact field names and will show nothing if they don't "
@@ -294,6 +300,7 @@ def synthesize(question: str, evidence: dict, pack: str = packs.DEFAULT_PACK) ->
         "  kpi_cards   -> [{\"label\": string, \"value\": string}, ...]\n"
         "  infographic -> {\"headline\": string, \"stats\": [{\"label\": string, \"value\": string}, ...], \"note\": string (optional)}\n"
         "  map         -> {\"points\": [{\"lat\": number, \"lon\": number, \"label\": string}, ...]}\n"
+        "  choropleth  -> {\"value_field\": string (the numeric column in the rows to colour by), \"label_field\": string (the place-name column), \"unit\": string, \"title\": string (short, e.g. \"Unemployment rate, %\")}\n"
         "Every array named above (labels, values, series, stats, points) "
         "must be present, even if empty — never omit it."
         + packs.synthesis_rules(pack)

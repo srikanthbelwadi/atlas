@@ -68,8 +68,10 @@ PACKS: dict[str, dict] = {
             "name that source and the observation date(s) (e.g. 'According to Census Bureau ACS 5-year "
             "estimates as published on Data Commons…'); if `date` differs across places, say the values "
             "are the latest each place has, not one common year. Never restate figures with more "
-            "precision than the rows carry. Use `bar` for a ranking or a comparison of places, `line` "
-            "for a trend, `kpi_cards` for a single value; never choose `map` for these rows (no coordinates)."
+            "precision than the rows carry. Use `choropleth` for a ranking or comparison across five "
+            "or more places when geo_capable is true (value_field is the numeric column, label_field "
+            "is `place`), `bar` for fewer, `line` for a trend, `kpi_cards` for a single value; never "
+            "choose `map` for these rows (no coordinates)."
         ),
     },
     "finance": {

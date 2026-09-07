@@ -15,6 +15,7 @@ What these cover:
   - pipeline._fetch_one dispatches `kind: datacommons` to the accessor and
     returns the rows/params/doc shape the rest of the pipeline expects.
 """
+import json
 import os
 import sys
 import types
@@ -161,6 +162,14 @@ class FakeAPI:
             return {"entities": [{"node": name, "candidates": ([{"dcid": dcid, "dominantType": "State"}] if dcid else [])}]}
         if path == "node" and body["property"] == "->name":
             return {"data": {d: {"arcs": {"name": {"nodes": [{"value": NAMES[d]}]}}} for d in body["nodes"] if d in NAMES}}
+        if path == "node" and body["property"].startswith("->geoJsonCoordinates"):
+            # a square per known place; India deliberately has no geometry
+            data = {}
+            for i, d in enumerate(body["nodes"]):
+                if d in NAMES and d != "country/IND" and not d.startswith(("Count_", "Median_", "Unemployment")):
+                    geom = {"type": "Polygon", "coordinates": [[[i, 0], [i + 1, 0], [i + 1, 1], [i, 1], [i, 0]]]}
+                    data[d] = {"arcs": {body["property"][2:]: {"nodes": [{"value": json.dumps(geom)}]}}}
+            return {"data": data}
         if path == "node" and body["property"].startswith("<-containedInPlace+"):
             parent = body["nodes"][0]
             kids = CHILDREN.get(parent, [])
@@ -379,3 +388,60 @@ def test_bound_evidence_hands_small_groups_surplus_to_large_ones():
     for r in sent:
         counts[r["place"]] = counts.get(r["place"], 0) + 1
     assert counts == {"A": 3, "B": 17} and cov["rows_sent"] == 20
+
+
+# --- map answers: backend/geo/boundaries.py + pipeline.finalize_map --------
+
+from backend.geo import boundaries  # noqa: E402
+
+
+def test_place_key_from_dcid_fips_and_iso():
+    pk = boundaries.place_key
+    assert pk({"place_dcid": "geoId/06085"}) == "geoId/06085"
+    assert pk({"geo_id": "06085"}) == "geoId/06085"
+    assert pk({"geo_id": "6"}) == "geoId/06"
+    assert pk({"state_fips_code": "06", "county_fips_code": "085"}) == "geoId/06085"
+    assert pk({"county_fips_code": "06085"}) == "geoId/06085"
+    assert pk({"zip_code": "95014"}) == "zip/95014"
+    assert pk({"country_code": "usa"}) == "country/USA"
+    assert pk({"place": "Springfield"}) is None, "a name is never a key"
+    assert boundaries.geo_capable([{"place_dcid": f"geoId/0{i}"} for i in range(5)])
+    assert not boundaries.geo_capable([{"place_dcid": "geoId/06"}] * 10)
+
+
+def test_attach_joins_rows_to_boundaries_and_reports(api):
+    boundaries.clear_cache()
+    rows = [{"place": "Santa Clara County", "place_dcid": "geoId/06085", "date": "2024-02", "value": 3.6, "source": "BLS"},
+            {"place": "Alameda County", "place_dcid": "geoId/06001", "date": "2024-02", "value": 4.1, "source": "BLS"},
+            {"place": "Los Angeles County", "place_dcid": "geoId/06037", "date": "2024-02", "value": 5.2, "source": "BLS"},
+            {"place": "Los Angeles County", "place_dcid": "geoId/06037", "date": "2024-01", "value": 9.9, "source": "BLS"}]
+    geo = boundaries.attach(rows, "value", "place")
+    assert geo["ok"] and geo["matched"] == 3 and geo["detail"] == "DP3"
+    la = next(f for f in geo["features"]["features"] if f["id"] == "geoId/06037")
+    assert la["properties"]["value"] == 5.2, "the latest observation per place, not the first row"
+    assert la["properties"]["label"] == "Los Angeles County" and la["properties"]["source"] == "BLS"
+    assert geo["bounds"] and len(geo["bounds"]) == 4
+    calls = [c for c in api.calls if c[1] == "node" and "geoJsonCoordinates" in (c[3] or {}).get("property", "")]
+    assert calls and calls[0][3]["property"] == "->geoJsonCoordinatesDP3"
+
+    # A place Data Commons has no geometry for is reported, not drawn.
+    rows.append({"place": "India", "place_dcid": "country/IND", "date": "2024", "value": 7.0})
+    geo = boundaries.attach(rows, "value", "place")
+    assert geo["ok"] and geo["matched"] == 3 and geo["unmatched"] == ["country/IND"]
+
+
+def test_finalize_map_attaches_or_downgrades(api):
+    boundaries.clear_cache()
+    rows = [{"place": n, "place_dcid": d, "value": v} for n, d, v in
+            (("Santa Clara County", "geoId/06085", 3.6), ("Alameda County", "geoId/06001", 4.1), ("Los Angeles County", "geoId/06037", 5.2))]
+    pres = {"visualization": {"kind": "choropleth", "data": json.dumps({"value_field": "value", "label_field": "place", "title": "Unemployment rate, %"})}}
+    geo, note = pipeline.finalize_map(pres, rows)
+    assert geo and geo["ok"] and pres["visualization"]["kind"] == "choropleth" and "3 places" in note
+
+    # No boundaries at all -> same rows as a ranked bar, kind rewritten, reason recorded.
+    india = [{"place": f"Place {i}", "place_dcid": "country/IND", "value": i} for i in range(6)]
+    pres = {"visualization": {"kind": "choropleth", "data": json.dumps({"value_field": "value", "label_field": "place"})}}
+    geo, note = pipeline.finalize_map(pres, india)
+    assert geo is None and pres["visualization"]["kind"] == "bar" and "downgraded" in note
+    bar = json.loads(pres["visualization"]["data"])
+    assert bar["labels"] and bar["values"] == sorted(bar["values"], reverse=True)

@@ -14,6 +14,7 @@ SSE trace, and check the expectations in the YAML:
   params_include    subset of the bound params on the query that ran
   max_bytes_gb      bytes billed ceiling
   verified_quotes_min, receipt, rows_include_source, kind, claims_min, verdicts_include
+  geo_matched_min   a choropleth answer attached boundaries for at least N places
 Writes a markdown report (pass/fail per question with source, bytes, cost,
 elapsed) and exits non-zero if anything failed. Needs `requests` + `pyyaml`.
 """
@@ -28,35 +29,14 @@ import requests
 import yaml
 
 
-def _sse_lines(r):
-    """Yields decoded lines from an SSE response, splitting on \\n ourselves.
-    requests' iter_lines() can emit a phantom empty line when a chunk
-    boundary falls between the \\r and \\n of a line ending (sse-starlette
-    terminates lines with \\r\\n); the runner reads a blank line as
-    "event complete" and fires a half-read event that then fails to parse.
-    Found live: the first claim.verdict of the finance fact-check golden
-    question was reported as unparseable on every run while the wire
-    payload was valid JSON."""
-    buf = b""
-    for chunk in r.iter_content(chunk_size=None):
-        if not chunk:
-            continue
-        buf += chunk
-        while True:
-            i = buf.find(b"\n")
-            if i < 0:
-                break
-            line, buf = buf[:i], buf[i + 1:]
-            yield line.decode("utf-8", "replace").rstrip("\r")
-    if buf:
-        yield buf.decode("utf-8", "replace").rstrip("\r")
-
-
 def stream(base, path, token, body):
     with requests.post(f"{base}{path}", json=body, headers={"Authorization": f"Bearer {token}"}, stream=True, timeout=660) as r:
         r.raise_for_status()
         event, data = None, []
-        for line in _sse_lines(r):
+        for raw in r.iter_lines(decode_unicode=True):
+            if raw is None:
+                continue
+            line = raw.strip("\r")
             if line.startswith("event:"):
                 event = line[6:].strip()
             elif line.startswith("data:"):
@@ -145,6 +125,10 @@ def check(expect, events):
         failures.append("receipt does not record the entitlement that unlocked it")
     if "kind" in expect and (terminal.get("visualization") or {}).get("kind") != expect["kind"]:
         failures.append(f"viz kind {(terminal.get('visualization') or {}).get('kind')!r} != {expect['kind']!r}")
+    if "geo_matched_min" in expect:
+        matched = ((terminal.get("geo") or {}).get("matched")) or 0
+        if matched < expect["geo_matched_min"]:
+            failures.append(f"geo matched {matched} < {expect['geo_matched_min']} ({(wt.get('geo') or {}).get('reason')})")
     if "claims_min" in expect:
         claims = next((p.get("claims", []) for e, p in events if e == "claim.extracted"), [])
         if len(claims) < expect["claims_min"]:

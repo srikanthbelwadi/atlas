@@ -40,11 +40,33 @@ export interface Citation {
   trust: TrustLevel;
 }
 
-export type VisualizationKind = "table" | "bar" | "line" | "kpi_cards" | "map" | "infographic" | "verdict_table";
+export type VisualizationKind = "table" | "bar" | "line" | "kpi_cards" | "map" | "infographic" | "verdict_table" | "choropleth";
 
 export interface Visualization {
   kind: VisualizationKind;
   data: string; // JSON-encoded, shape depends on `kind`
+}
+
+// Map answers (backend/geo/boundaries.py, pipeline.finalize_map): place
+// boundaries joined to the fetched rows on stable ids, attached by the
+// backend after synthesis chose `choropleth`. The model never emits geometry.
+export interface GeoFeatureProps {
+  key: string;
+  label: string;
+  value: number | null;
+  date?: string | number;
+  source?: string;
+  unit?: string;
+  rank?: number;
+}
+export interface GeoPayload {
+  features: { type: "FeatureCollection"; features: { type: "Feature"; id: string; geometry: unknown; properties: GeoFeatureProps }[] };
+  key_field: string;
+  value_field: string;
+  label_field: string | null;
+  bounds: [number, number, number, number] | null;
+  detail: string;
+  matched: number;
 }
 
 export interface Answer {
@@ -63,6 +85,8 @@ export interface Answer {
   // "not_entitled" when the answer is a refusal because the best-matching
   // source is restricted (backend/orchestrator/pipeline._withheld_answer).
   refused?: "not_entitled";
+  // Present when visualization.kind is "choropleth" and boundaries attached.
+  geo?: GeoPayload;
 }
 
 // A private source discovery matched but did not offer this user.
