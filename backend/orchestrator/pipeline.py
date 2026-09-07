@@ -180,6 +180,7 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
         bytes_billed = 0
         extra_usage: dict = {}   # plan-tier calls made inside a computation (theming), priced separately
         receipt_doc = None       # the OKF doc behind the evidence, for the receipt
+        map_rows = None          # every place with data, when an executor ranks a subset (choropleths paint them all)
         remaining = [chosen] + [c for c in candidates if c["source_id"] != chosen["source_id"]]
 
         for attempt, candidate in enumerate(remaining[: MAX_BACKTRACKS + 1]):
@@ -327,6 +328,7 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
                       if coverage["truncated"] else {})}}
             walkthrough["source_used"] = {"id": candidate["source_id"], "title": candidate["title"], "trust": candidate["trust"]}
             receipt_doc = fetched.get("doc")
+            map_rows = fetched.get("map_rows")
             evidence = {
                 "question": question,
                 "source": walkthrough["source_used"],
@@ -375,7 +377,7 @@ async def run(question: str, user_id: str, pack: str = packs.DEFAULT_PACK, entit
             # Boundaries come from the backend, joined on place ids, after
             # the model has chosen the kind. A weak join downgrades to a bar
             # chart of the same rows and says so in the walkthrough.
-            geo_payload, note = await _to_thread(finalize_map, presentation, evidence["rows"])
+            geo_payload, note = await _to_thread(finalize_map, presentation, evidence["rows"], map_rows)
             walkthrough["geo"] = {k: v for k, v in (geo_payload or {}).items() if k != "features"} if geo_payload else {"ok": False, "reason": note}
             yield {"event": "synthesize.progress", "data": {"stage": "map", "note": note}}
         yield {
@@ -551,7 +553,8 @@ def _fetch_one(candidate: dict, plan: dict, question: str, entitlements: list[st
         doc = okf_loader.load_by_id(candidate["source_id"])
         executor = doc.executor if doc else "datacommons_place"
         result = datacommons_accessor.run(executor, plan.get("params", {}))
-        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": result["params"], "doc": doc}
+        return {"rows": result["rows"], "bytes_billed": 0, "sql": None, "params": result["params"], "doc": doc,
+                **({"map_rows": result["map_rows"]} if result.get("map_rows") else {})}
 
     # Non-BigQuery source ported from NeuralKG, described purely via OKF.
     doc = okf_loader.load_by_id(candidate["source_id"])
@@ -655,10 +658,11 @@ def bound_evidence(rows: list[dict], cap: int) -> tuple[list[dict], dict]:
     return out, {"rows_total": total, "rows_sent": len(out), "truncated": True, "stratified_by": stratum, "ordered_by": order}
 
 
-def finalize_map(presentation: dict, rows: list[dict]) -> tuple[dict | None, str]:
-    """For a `choropleth` presentation: attach boundaries for the rows'
-    places (backend/geo/boundaries.py). On a weak join, rewrite the
-    presentation in place to a `bar` of the same rows so the answer still
+def finalize_map(presentation: dict, rows: list[dict], map_rows: list[dict] | None = None) -> tuple[dict | None, str]:
+    """For a `choropleth` presentation: attach boundaries for the places in
+    `map_rows` (every place with data, when the executor supplied them) or
+    else `rows` (backend/geo/boundaries.py). On a weak join, rewrite the
+    presentation in place to a `bar` of `rows` so the answer still
     renders, and return the reason. Returns (geo_payload_or_None, note)."""
     import json as _json
     viz = presentation.get("visualization") or {}
@@ -671,7 +675,7 @@ def finalize_map(presentation: dict, rows: list[dict]) -> tuple[dict | None, str
     value_field = spec.get("value_field") or "value"
     label_field = spec.get("label_field") or None
     try:
-        geo = boundaries.attach(rows, value_field, label_field)
+        geo = boundaries.attach(map_rows or rows, value_field, label_field)
     except Exception as exc:  # noqa: BLE001 — a boundary fetch failure must never lose the answer
         geo = {"ok": False, "reason": f"boundary lookup failed: {exc}", "features": {"type": "FeatureCollection", "features": []}}
     if geo.get("ok"):

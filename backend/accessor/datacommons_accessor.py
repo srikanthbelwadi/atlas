@@ -661,9 +661,9 @@ def run_children(params: dict) -> dict:
     numeric = [r for r in rows if isinstance(r.get("value"), (int, float))]
     numeric.sort(key=lambda r: r["value"], reverse=(order != "asc"))
     top_n = min(_as_int(params.get("top_n")) or 25, 500)
-    ranked = numeric[:top_n]
-    for i, r in enumerate(ranked, start=1):
+    for i, r in enumerate(numeric, start=1):
         r["rank"] = i
+    ranked = numeric[:top_n]
     bound = {
         "indicator": params.get("indicator"),
         "variable_dcid": indicator["dcid"],
@@ -680,7 +680,10 @@ def run_children(params: dict) -> dict:
         **({"year": year} if year else {"period": "latest"}),
         **_facet_params(result["facet"]),
     }
-    return {"rows": ranked, "params": bound, "considered": indicator["considered"], "facets_available": result["facets_available"]}
+    # `map_rows`: every place with data, ranked — a choropleth should paint
+    # the whole parent (all 58 California counties), while the narrative and
+    # the table keep the top N the question asked for.
+    return {"rows": ranked, "map_rows": numeric, "params": bound, "considered": indicator["considered"], "facets_available": result["facets_available"]}
 
 
 EXECUTORS = {"datacommons_place": run_place, "datacommons_children": run_children}

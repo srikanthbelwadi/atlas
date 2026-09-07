@@ -284,6 +284,8 @@ def test_run_children_ranks_with_one_facet(api):
     rows = out["rows"]
     assert [r["place"] for r in rows] == ["Los Angeles County", "Santa Clara County"]
     assert [r["rank"] for r in rows] == [1, 2]
+    assert [r["place"] for r in out["map_rows"]] == ["Los Angeles County", "Santa Clara County", "Alameda County"], "the map gets every place with data"
+    assert out["map_rows"][2]["rank"] == 3
     # LA has an acs1 row too, but acs5 covers all three counties, so acs5 is used everywhere
     assert {r["source"] for r in rows} == {"CensusACS5YearSurvey"} and rows[0]["value"] == 9_800_000
     p = out["params"]
@@ -437,6 +439,9 @@ def test_finalize_map_attaches_or_downgrades(api):
     pres = {"visualization": {"kind": "choropleth", "data": json.dumps({"value_field": "value", "label_field": "place", "title": "Unemployment rate, %"})}}
     geo, note = pipeline.finalize_map(pres, rows)
     assert geo and geo["ok"] and pres["visualization"]["kind"] == "choropleth" and "3 places" in note
+    # map_rows (every place) paints the map; rows (the top N) stay the narrative's evidence
+    geo, note = pipeline.finalize_map(pres, rows[:1], rows)
+    assert geo and geo["matched"] == 3
 
     # No boundaries at all -> same rows as a ranked bar, kind rewritten, reason recorded.
     india = [{"place": f"Place {i}", "place_dcid": "country/IND", "value": i} for i in range(6)]
