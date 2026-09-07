@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir -r backend/orchestrator/requirements.txt
 
 COPY backend/orchestrator ./backend/orchestrator
 COPY backend/accessor ./backend/accessor
+# Map answers: place boundaries via Data Commons (pipeline imports it).
+COPY backend/geo ./backend/geo
 # access.py reads the crawler's target list to know every private dataset
 # (use case D), even one with no hand-authored catalog doc yet.
 COPY backend/crawler/__init__.py backend/crawler/targets.py ./backend/crawler/
