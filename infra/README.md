@@ -147,6 +147,14 @@ check. Promote with `gcloud run services update-traffic atlas-orchestrator
 --to-latest`, then set `NEXT_PUBLIC_ATLAS_FINANCE_ENABLED` to `"true"` in
 `frontend/apphosting.yaml`.
 
+## Adding a backend package
+
+`backend/orchestrator/Dockerfile` copies the backend packages it needs one
+by one (`orchestrator`, `accessor`, `crawler` targets, `geo`). A new
+package under `backend/` needs its own `COPY` line or the container fails
+at import time and the revision serves 503 — found live when `backend/geo`
+was added.
+
 ## Google Data Commons (public catalog)
 
 `scripts/datacommons_phase0.sh` (needs `DC_API_KEY` in the environment — a free

@@ -349,7 +349,7 @@ may fan out.
 | `bigquery` | crawled tables (ad-hoc SQL) and most templates | guarded SQL: dry run, then the real query with `maximum_bytes_billed` | ad-hoc cap; reviewed templates may declare `cost_profile.cap_bytes`, clamped to `ATLAS_TEMPLATE_BYTE_CAP_MAX` (40 GB) — needed for the ~21 GB SEC bulk scans |
 | `bigquery_sample_llm` | `ac.cfpb_narrative_themes` | step 1: guarded SQL draws a bounded sample of free-text rows (≤ `max_sample_n` = 500); step 2: the plan-tier model themes the sample using the document's own prompt; the check stage verifies every quoted excerpt is a verbatim substring of the row it cites and drops the rest | sample cap; generation tokens priced separately (`token_usage.theme`) |
 | `composite` | `ac.sec_fact_reconcile` | ordered `steps`, each another attested computation with a parameter map; `combine: reconcile` adds `delta_pct` and `agreement` between two independently sourced values | each step's own guardrails; one `queries_executed` entry per step |
-| `sec_edgar` | `ac.sec_edgar_company_metric_by_year` (both packs) | resolves a company name or ticker to a CIK and returns one of 21 curated metrics by fiscal year, for one or more companies, from the EDGAR `company-facts` API | free API, 10 requests/s per IP |
+| `sec_edgar` | `ac.sec_edgar_company_metric_by_year` (both packs) | resolves a company name or ticker to a CIK and returns one of 21 curated metrics, for one or more companies, from the EDGAR `company-facts` API: for a history, one 10-K value per fiscal year from the latest filing (`fetch_annual_series`, optional `years`); for one named year, every reported period | free API, 10 requests/s per IP |
 | `sec_edgar_annual` | `ac.sec_fact_annual_api` | one 10-K fact per fiscal year selected the way an analyst would: latest period end, ≥ 300-day duration, latest filing | free API |
 | `sec_ratio` | `ac.sec_ratio_by_year` | ROA, ROE, net margin, efficiency ratio and equity-to-assets from annual facts, with the averaging rule stated in the answer | free API |
 | `datacommons_place` | `ac.dc_indicator_for_place` (public) | resolves place name(s) and a plain-language indicator through Data Commons' own resolvers (`/v2/resolve`, curated key map first), then one `/v2/observation` call; a single source facet for the whole answer, named on every row | free API (key required); 20 s timeout, 32 MB response cap, 3,500-place and 5,000-row caps, 6 h in-process cache |
@@ -434,6 +434,45 @@ support, and every model call already requires strict `response_schema`
 JSON output. Rather than bump the SDK for literal model "thinking" tokens,
 the design makes the pipeline's *own* real decisions legible, with no new
 dependency and no schema risk.
+
+**Evidence the answer step sees.** Synthesis is handed at most
+`EVIDENCE_ROW_CAP` (500) rows. When a fetch returns more, the cut is never
+positional and never silent: `pipeline.bound_evidence` groups rows by the
+lowest-cardinality text column (company, place, category) and keeps an
+equal share per group, most recent first by any date/year column, then
+re-orders chronologically; groups smaller than their share hand the
+surplus to the rest; with no entity column the most recent rows are kept.
+The coverage record (`rows_total`, `rows_sent`, `stratified_by`,
+`ordered_by`) goes into `check.done`, the walkthrough (`evidence`) and the
+synthesis prompt, which must say it saw a subset. The planner is told to
+aggregate, `ORDER BY` the dimension the question cares about and `LIMIT`
+ad-hoc SQL, so a large result is cut inside the query with the right
+ordering. Found live: 593 raw EDGAR facts for three companies, head-500,
+one company's recent years gone and nobody told; the EDGAR template now
+also returns one 10-K value per fiscal year (`fetch_annual_series`) so a
+"last five years" question never approaches the cap.
+
+**Answers on a map.** A ranking or comparison across five or more places
+renders as a `choropleth` (`components/viz/ChoroplethMap.tsx`, MapLibre GL
+with a quantile-binned ramp, legend, hover popup and a linked ranked
+table). The contract keeps the model away from geometry: synthesis is
+told `geo_capable=true` when the rows carry place keys, may choose the
+kind and names the value and label columns, and `pipeline.finalize_map`
+then attaches boundaries from Data Commons place nodes
+(`geoJsonCoordinatesDP1..DP3`, `backend/geo/boundaries.py`) joined on
+DCIDs — FIPS and ISO columns from BigQuery rows map onto the same ids;
+display names are never keys. One boundary per place, the latest
+observation when rows carry dates; detail level by feature count; cached
+per process. A weak join (under three places or under half the rows)
+downgrades the answer to a ranked bar chart of the same rows and records
+why in `walkthrough.geo`. `answer.geo` carries the FeatureCollection, so a
+map answer is inspectable like any other: the receipt names the template,
+the walkthrough names the boundaries matched and missed. The basemap
+(OpenFreeMap, `NEXT_PUBLIC_ATLAS_BASEMAP_STYLE`) is context only — if its
+host is unreachable the polygons render on a plain background. Golden set
+`tests/golden/maps_a.yaml` asserts five rankings map and two single-place
+questions do not (7/7, 2026-09-07); Earth Engine layers follow the plan in
+`atlas-earth-engine-ui-plan.md`.
 
 **Post-hoc walkthrough.** `Walkthrough.tsx` renders the full accumulated
 record after a question finishes (success, refusal or failure): every
@@ -846,7 +885,7 @@ The finance pack is the worked example of all three.
 
 ## 12. Verification
 
-**Unit tests** (`tests/`, 75 tests, no GCP required): the public catalog is
+**Unit tests** (`tests/`, 81 tests, no GCP required): the public catalog is
 exactly the expected set (the Data Commons and baby-names templates
 included) and untouched by packs; pack isolation; every one of the 17
 finance/public templates parses (sqlglot), binds its parameters and touches
@@ -855,6 +894,9 @@ accessor's place and indicator resolution, single-facet selection, year
 filters, ranking, pagination and caps run against a fake of the v2 API
 (`tests/test_places_catalog.py`); discovery's per-dataset cap; the public
 glossary carries the Data Commons routing rules and no finance rule; the
+evidence cap keeps every entity's latest rows; the EDGAR annual series
+picks one 10-K value per fiscal year; place keys, boundary attachment and
+the map downgrade path; the
 XBRL tag map is identical in both places it lives; the composite graph is
 acyclic; quote verification; verdict arithmetic; private documents are
 confined to `finance_demo` and no public document reads it; the
@@ -874,6 +916,7 @@ bound parameters, bytes, quotes and verdicts, and writes a report):
 | `finance_d` (private mart, entitled account) | 6/6 | four attested private answers with `unlocked_by` receipts; one ad-hoc question over the private ledger; one public question unaffected |
 | `finance_d_noaccess` (same account, entitlement revoked) | 4/4 | the same private questions refused naming the withheld sources; SQL naming the private table in the question never reaches BigQuery; a public question unaffected |
 | `places_a` (Data Commons, public pack) | 9/9 | eight attested Data Commons answers with resolved DCIDs and a named source facet (13–19 s end to end; 54 s for the ~3,100-county expansion); one honest no-evidence answer. `public_regression` re-run 10/10 on the same revision |
+| `maps_a` (map answers) | 7/7 | five rankings across places render as `choropleth` with boundaries attached (`geo_matched_min`); India's population stays a KPI and a one-place income trend stays a line |
 | `public_b` (candidate example questions) | 11/13 over two rounds | new chips are promoted to the home page only from this set once they pass: NYC 311 types, NYC collisions trend, LA PM2.5 trend, rising search terms, FEC committees, Asia CO₂ per capita, Brazil GDP per capita, Nigeria/Germany fertility, median age in Miami, obesity by state (the last two after the discovery cap, §4). SF 311 by category and the CPI trend failed in ad-hoc SQL and stay as regression targets, not chips |
 
 Five rounds of finance golden runs found and fixed: JSON serialisation of
