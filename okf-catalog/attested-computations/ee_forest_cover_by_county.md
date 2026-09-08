@@ -19,7 +19,7 @@ stale_after: 2027-09-08
 version: "1"
 lifecycle: active
 measurement_kind: computed
-citation_template: "Hansen/UMD/Google/USGS/NASA Global Forest Change 2000–2024 (v1.12), via Google Earth Engine in BigQuery: ST_REGIONSTATS over each county boundary (US Census TIGER) at 300 m sampling — mean of `treecover2000` (% canopy), and pixels with `lossyear > 0` as a share of all pixels (forest loss since 2000 as % of county area). Landsat-derived estimates; loss means canopy removal, including harvest and fire, not net change."
+citation_template: "Hansen/UMD/Google/USGS/NASA Global Forest Change 2000–2024 (v1.12), via Google Earth Engine in BigQuery: ST_REGIONSTATS over each county boundary (US Census TIGER) at 300 m sampling — mean of `treecover2000` (% canopy in 2000) and mean of the binary `loss` band × 100 (share of county area with canopy loss 2001–2024). Landsat-derived estimates; loss means canopy removal, including harvest and fire, not net change."
 tags: [earth engine, hansen, forest, "tree cover", deforestation, "forest loss", canopy, "by county", counties, state, landsat, satellite, map]
 source:
   kind: bigquery
@@ -41,7 +41,7 @@ sources:
 cost_profile:
   expected_bytes: 50000000
   cap_bytes: 1073741824
-  note: "Earth Engine portion billed as BigQuery Services-SKU slot time; three ST_REGIONSTATS calls per county at 300 m — a state is seconds to tens of seconds of slot time."
+  note: "Earth Engine portion billed as BigQuery Services-SKU slot time; two ST_REGIONSTATS calls per county at 300 m — a state is seconds to tens of seconds of slot time."
 computation:
   runtime:
     executor: bigquery
@@ -60,16 +60,10 @@ computation:
           c.county_geom, 'ee://UMD/hansen/global_forest_change_2024_v1_12', 'treecover2000',
           OPTIONS => JSON '{"scale": 300}'
         ).mean, 1) AS tree_cover_2000_pct,
-        ROUND(100 * SAFE_DIVIDE(
-          ST_REGIONSTATS(
-            c.county_geom, 'ee://UMD/hansen/global_forest_change_2024_v1_12', 'lossyear',
-            OPTIONS => JSON '{"scale": 300, "include": "lossyear > 0"}'
-          ).count,
-          ST_REGIONSTATS(
-            c.county_geom, 'ee://UMD/hansen/global_forest_change_2024_v1_12', 'lossyear',
-            OPTIONS => JSON '{"scale": 300}'
-          ).count
-        ), 2) AS forest_loss_since_2000_pct_of_area,
+        ROUND(100 * ST_REGIONSTATS(
+          c.county_geom, 'ee://UMD/hansen/global_forest_change_2024_v1_12', 'loss',
+          OPTIONS => JSON '{"scale": 300}'
+        ).mean, 2) AS forest_loss_since_2000_pct_of_area,
         '2000–2024' AS period,
         'Hansen Global Forest Change via Earth Engine' AS source
       FROM `bigquery-public-data.geo_us_boundaries.counties` c
@@ -83,8 +77,11 @@ computation:
 
 Forest cover and loss by county for a state, from the standard global
 Landsat forest-change product, through the same guarded BigQuery path as
-every other template. Two measures per county: canopy cover in 2000 and
-the share of the county's area with any canopy loss 2001–2024.
+every other template. Two measures per county: canopy cover in 2000
+(mean of `treecover2000`) and the share of the county's area with any
+canopy loss 2001–2024 (mean of the binary `loss` band). ST_REGIONSTATS
+has no pixel filter (an `include` option was tried live and rejected), so
+the loss share is over the whole county area, water included.
 
 ## Method, honestly
 
