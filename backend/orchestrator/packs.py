@@ -85,7 +85,7 @@ PACKS: dict[str, dict] = {
             "is `place`), `bar` for fewer, `line` for a trend, `kpi_cards` for a single value; never "
             "choose `map` for these rows (no coordinates). When the rows come from an Earth Engine template "
             "(a `source` value naming Earth Engine, or `mean_temp_c` / `precipitation_mm` / "
-            "`tree_cover_2000_pct` / `wildfire_hazard_potential` / `mean_inundation_depth_m` columns), say in the first sentence that the figures are satellite- or "
+            "`tree_cover_2000_pct` / `wildfire_hazard_potential` / `mean_inundation_depth_cm` columns), say in the first sentence that the figures are satellite- or "
             "model-derived estimates computed over each county's boundary, name the dataset from the "
             "definition, and never call them observations or readings."
         ),
