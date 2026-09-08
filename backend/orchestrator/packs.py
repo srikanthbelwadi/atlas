@@ -71,7 +71,12 @@ PACKS: dict[str, dict] = {
             "Choose them for 'hottest / wettest / driest counties in <state>', 'average temperature by county "
             "in <state> in <year>', 'which <state> counties lost the most forest', 'wildfire risk by county in "
             "<state>', 'which <state> counties face the worst flood risk'. Bind `state` as the two-letter "
-            "code. "
+            "code. Which Earth Engine template: 'hottest', 'coldest', 'warmest', 'temperature', 'heat', "
+            "'rain', 'wettest', 'driest', 'precipitation' → ac.ee_era5_climate_by_county (heat is weather, "
+            "not fire — confirmed live: 'hottest counties in California in July 2025' was misrouted to the "
+            "wildfire template); 'wildfire', 'fire', 'burn' → ac.ee_wildfire_risk_by_county; 'flood', "
+            "'inundation', 'surge' → ac.ee_flood_hazard_by_county; 'forest', 'tree cover', 'deforestation' → "
+            "ac.ee_forest_cover_by_county. "
             "They are NOT for one city or one station ('average temperature in Chicago in 2023' stays on the "
             "NOAA GSOD station tables), not for daily readings, and not for places outside the US.\n\n"
         ),

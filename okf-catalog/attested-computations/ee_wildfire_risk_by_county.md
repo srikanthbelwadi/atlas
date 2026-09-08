@@ -9,9 +9,11 @@ description: >
   Service "Wildfire Risk to Communities" 30 m rasters — BigQuery's
   ST_REGIONSTATS over the Earth Engine mosaic. Answers "which counties in
   Oregon face the highest wildfire risk", "wildfire hazard by county in
-  Colorado", "burn probability by county in California". Rows carry
-  county FIPS, so the answer renders as a map. Modelled risk, not a fire
-  history.
+  Colorado", "burn probability by county in California". Only for
+  questions about fire, wildfire or burning — a question about heat,
+  hottest counties or temperature is climate, not fire, and belongs to the
+  ERA5-Land climate template. Rows carry county FIPS, so the answer
+  renders as a map. Modelled risk, not a fire history.
 trust: human-reviewed
 pack: public
 reviewer: Bel
