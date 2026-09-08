@@ -705,3 +705,15 @@ textarea.fact-check-input {
   .use-case-list { grid-template-columns: repeat(3, 1fr); }
   .feature-grid.three { grid-template-columns: repeat(3, 1fr); }
 }
+
+
+/* Map answers (components/viz/ChoroplethMap.tsx): tall on desktop, capped on
+   a phone so the first ranked rows are visible without scrolling. */
+.choropleth-map {
+  height: min(60vh, 520px);
+}
+@media (max-width: 640px) {
+  .choropleth-map {
+    height: 45vh;
+  }
+}

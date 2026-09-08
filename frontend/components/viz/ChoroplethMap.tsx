@@ -44,27 +44,61 @@ function quantileBreaks(values: number[], classes: number): number[] {
   return breaks.filter((b, i, arr) => i === 0 || b !== arr[i - 1]);
 }
 
-export function formatValue(v: number | null | undefined, unit?: string): string {
+/** Unit suffixes that attach to the number without a space. */
+const TIGHT_UNITS = new Set(["%", "percent", "Percent", "pct"]);
+
+function unitSuffix(unit?: string): string {
+  if (!unit) return "";
+  const u = unit.trim();
+  if (!u) return "";
+  if (TIGHT_UNITS.has(u)) return "%";
+  return ` ${u}`;
+}
+
+/**
+ * Formats a value for the legend, popup and table. `decimals` is chosen
+ * once per answer from the spread of values (see decimalsFor) so a legend
+ * reads "5.2–5.6%" rather than "5.20 – 5.60", and a $109,870 income keeps
+ * its thousands separators.
+ */
+export function formatValue(v: number | null | undefined, unit?: string, decimals?: number): string {
   if (v == null || Number.isNaN(v)) return "—";
   const abs = Math.abs(v);
   let s: string;
   if (abs >= 1e9) s = `${(v / 1e9).toFixed(2)}B`;
   else if (abs >= 1e6) s = `${(v / 1e6).toFixed(2)}M`;
   else if (abs >= 1e4) s = Math.round(v).toLocaleString();
-  else if (abs >= 100) s = v.toFixed(1);
-  else s = v.toFixed(2);
-  return unit ? `${s} ${unit}` : s;
+  else {
+    const d = decimals ?? (abs >= 100 ? 1 : 2);
+    s = v.toFixed(d);
+  }
+  return `${s}${unitSuffix(unit)}`;
+}
+
+/** Decimals that separate the legend's bin edges without false precision. */
+export function decimalsFor(values: number[]): number {
+  if (!values.length) return 1;
+  const max = Math.max(...values.map((v) => Math.abs(v)));
+  if (max >= 1e4) return 0;
+  const sorted = [...new Set(values)].sort((a, b) => a - b);
+  let minGap = Infinity;
+  for (let i = 1; i < sorted.length; i++) minGap = Math.min(minGap, sorted[i] - sorted[i - 1]);
+  if (!Number.isFinite(minGap) || minGap === 0) return max >= 100 ? 0 : 1;
+  if (minGap >= 1) return max >= 100 ? 0 : 1;
+  if (minGap >= 0.1) return 1;
+  return 2;
 }
 
 interface Props {
   geo: GeoPayload;
   unit?: string;
   title?: string;
+  subtitle?: string;
   onHover?: (key: string | null) => void;
   highlightKey?: string | null;
 }
 
-export default function ChoroplethMap({ geo, unit, title, onHover, highlightKey }: Props) {
+export default function ChoroplethMap({ geo, unit, title, subtitle, onHover, highlightKey }: Props) {
   const container = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -86,6 +120,7 @@ export default function ChoroplethMap({ geo, unit, title, onHover, highlightKey 
     [geo]
   );
   const breaks = useMemo(() => quantileBreaks(values, ramp.length), [values, ramp.length]);
+  const decimals = useMemo(() => decimalsFor(values), [values]);
 
   // MapLibre "step" expression: colour by value across the quantile breaks.
   const fillColor = useMemo(() => {
@@ -134,7 +169,11 @@ export default function ChoroplethMap({ geo, unit, title, onHover, highlightKey 
         id: "places-line",
         type: "line",
         source: "places",
-        paint: { "line-color": dark ? "#0f1a20" : "#ffffff", "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0.6] },
+        paint: {
+          "line-color": dark ? "#0f1a20" : "#ffffff",
+          // Thin at state/country zooms, heavier once zoomed in; hover always stands out.
+          "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, ["interpolate", ["linear"], ["zoom"], 4, 0.3, 7, 0.6, 10, 1]],
+        },
       });
       if (geo.bounds) map.fitBounds([geo.bounds[0], geo.bounds[1], geo.bounds[2], geo.bounds[3]], { padding: 28, duration: 0 });
     };
@@ -158,7 +197,7 @@ export default function ChoroplethMap({ geo, unit, title, onHover, highlightKey 
         .setHTML(
           `<div style="font-family:var(--font-sans);font-size:12px;line-height:1.4;color:#16212b">` +
             `<div style="font-weight:600">${p.label ?? key}</div>` +
-            `<div style="font-variant-numeric:tabular-nums">${formatValue(Number(p.value), unit)}</div>` +
+            `<div style="font-variant-numeric:tabular-nums">${formatValue(Number(p.value), unit, decimals)}</div>` +
             (extra ? `<div style="color:#57626c;font-size:11px;margin-top:2px">${extra}</div>` : "") +
             `</div>`
         )
@@ -201,22 +240,24 @@ export default function ChoroplethMap({ geo, unit, title, onHover, highlightKey 
     const stops: { color: string; label: string }[] = [];
     const edges = [Math.min(...values), ...breaks, Math.max(...values)];
     for (let i = 0; i < edges.length - 1; i++) {
-      stops.push({ color: ramp[Math.min(i, ramp.length - 1)], label: `${formatValue(edges[i])} – ${formatValue(edges[i + 1])}` });
+      stops.push({ color: ramp[Math.min(i, ramp.length - 1)], label: `${formatValue(edges[i], undefined, decimals)}–${formatValue(edges[i + 1], unit, decimals)}` });
     }
     return stops;
-  }, [values, breaks, ramp]);
+  }, [values, breaks, ramp, unit, decimals]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: "0.88rem", fontWeight: 600 }}>{title || geo.value_field}</div>
-        <div style={{ fontSize: "0.74rem", color: "var(--ink-dim)" }}>
-          {geo.matched} places · boundaries from Data Commons{basemapFailed ? " · basemap unavailable" : ""}
+        <div>
+          <div style={{ fontSize: "0.88rem", fontWeight: 600 }}>{title || geo.value_field}</div>
+          {subtitle ? <div style={{ fontSize: "0.74rem", color: "var(--ink-dim)", marginTop: 2 }}>{subtitle}</div> : null}
         </div>
+        {basemapFailed ? <div style={{ fontSize: "0.74rem", color: "var(--ink-dim)" }}>basemap unavailable</div> : null}
       </div>
       <div
         ref={container}
-        style={{ width: "100%", height: "min(60vh, 520px)", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)" }}
+        className="choropleth-map"
+        style={{ width: "100%", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)" }}
         aria-label={`Map of ${geo.matched} places coloured by ${title || geo.value_field}`}
       />
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: "0.74rem", color: "var(--ink-dim)", alignItems: "center" }}>
@@ -226,7 +267,7 @@ export default function ChoroplethMap({ geo, unit, title, onHover, highlightKey 
             <span style={{ fontVariantNumeric: "tabular-nums" }}>{s.label}</span>
           </span>
         ))}
-        {unit ? <span>({unit})</span> : null}
+        <span style={{ marginLeft: "auto" }}>{geo.matched} places</span>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import type { GeoPayload } from "@/lib/types";
-import { formatValue } from "./ChoroplethMap";
+import { decimalsFor, formatValue } from "./ChoroplethMap";
 
 // MapLibre touches `window` at import time, so the map itself is loaded
 // client-side only; the table beneath it renders immediately.
@@ -56,17 +56,28 @@ export default function ChoroplethViz({ data, geo }: { data: string; geo?: GeoPa
   if (!geo || !rows.length) {
     return <div style={{ color: "var(--ink-dim)", fontSize: "0.88rem" }}>No mappable places in this answer.</div>;
   }
+  const decimals = decimalsFor(rows.map((p) => p.value as number));
+  // Date and source are per row; when every row agrees they belong in the
+  // header ("May 2026 · www.bls.gov via Data Commons") rather than repeated.
+  const dates = new Set(rows.map((p) => (p.date == null ? "" : String(p.date))));
+  const sources = new Set(rows.map((p) => (p.source == null ? "" : String(p.source))));
+  const oneDate = dates.size === 1 ? [...dates][0] : "";
+  const oneSource = sources.size === 1 ? [...sources][0] : "";
+  const subtitle = [oneDate, oneSource ? `${oneSource} via Data Commons` : "boundaries from Data Commons"].filter(Boolean).join(" · ")
+    + (dates.size > 1 ? " · latest value per place" : "");
+  const showDate = dates.size > 1;
+  const showSource = sources.size > 1;
 
   const visible = showAll ? rows : rows.slice(0, 15);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {MAPS_ENABLED && <ChoroplethMap geo={geo} unit={spec.unit} title={spec.title} onHover={setHoverKey} highlightKey={hoverKey} />}
+      {MAPS_ENABLED && <ChoroplethMap geo={geo} unit={spec.unit} title={spec.title} subtitle={subtitle} onHover={setHoverKey} highlightKey={hoverKey} />}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.86rem" }}>
           <thead>
             <tr>
-              {["#", "Place", spec.title || spec.value_field || "Value", "Date", "Source"].map((h) => (
-                <th key={h} style={{ textAlign: h === "#" || h === "Date" || h === "Source" ? "left" : h === "Place" ? "left" : "right", padding: "6px 10px", borderBottom: "2px solid var(--border)", color: "var(--ink-dim)", fontWeight: 500 }}>
+              {["#", "Place", spec.title || spec.value_field || "Value", ...(showDate ? ["Date"] : []), ...(showSource ? ["Source"] : [])].map((h, i) => (
+                <th key={h} style={{ textAlign: i === 2 ? "right" : "left", padding: "6px 10px", borderBottom: "2px solid var(--border)", color: "var(--ink-dim)", fontWeight: 500 }}>
                   {h}
                 </th>
               ))}
@@ -82,9 +93,9 @@ export default function ChoroplethViz({ data, geo }: { data: string; geo?: GeoPa
               >
                 <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", color: "var(--ink-dim)" }}>{i + 1}</td>
                 <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)" }}>{p.label}</td>
-                <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatValue(p.value as number, spec.unit)}</td>
-                <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", color: "var(--ink-dim)" }}>{p.date ? String(p.date) : ""}</td>
-                <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", color: "var(--ink-dim)" }} className="mono">{p.source ? String(p.source) : ""}</td>
+                <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatValue(p.value as number, spec.unit, decimals)}</td>
+                {showDate && <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", color: "var(--ink-dim)" }}>{p.date ? String(p.date) : ""}</td>}
+                {showSource && <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--border)", color: "var(--ink-dim)" }} className="mono">{p.source ? String(p.source) : ""}</td>}
               </tr>
             ))}
           </tbody>
