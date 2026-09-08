@@ -454,7 +454,7 @@ def test_finalize_map_attaches_or_downgrades(api):
 
 # --- Earth Engine in BigQuery (phase B) ---------------------------------------
 
-EE_IDS = {"ac.ee_era5_climate_by_county", "ac.ee_forest_cover_by_county"}
+EE_IDS = {"ac.ee_era5_climate_by_county", "ac.ee_forest_cover_by_county", "ac.ee_wildfire_risk_by_county", "ac.ee_flood_hazard_by_county"}
 
 
 def test_earth_engine_templates_parse_bind_and_declare_method():

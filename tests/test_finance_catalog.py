@@ -66,6 +66,8 @@ PUBLIC_IDS_BEFORE_FINANCE = {
     # Earth Engine in BigQuery (ST_REGIONSTATS), 2026-09-08.
     "ac.ee_era5_climate_by_county",
     "ac.ee_forest_cover_by_county",
+    "ac.ee_wildfire_risk_by_county",
+    "ac.ee_flood_hazard_by_county",
 }
 
 

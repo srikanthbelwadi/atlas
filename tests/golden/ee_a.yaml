@@ -21,6 +21,18 @@ questions:
   - id: E5
     q: "Tree cover by county in Washington state."
     expect: {path: attested, source_id: ac.ee_forest_cover_by_county, params_include: {state: WA}, kind: choropleth, geo_matched_min: 30}
+  - id: E7
+    q: "Which counties in Oregon face the highest wildfire risk?"
+    expect: {path: attested, source_id: ac.ee_wildfire_risk_by_county, params_include: {state: OR}, kind: choropleth, geo_matched_min: 30}
+  - id: E8
+    q: "Burn probability by county in Colorado."
+    expect: {path: attested, source_id: ac.ee_wildfire_risk_by_county, params_include: {state: CO}, kind: choropleth, geo_matched_min: 50}
+  - id: E9
+    q: "Which counties in Texas face the worst flood risk?"
+    expect: {path: attested, source_id: ac.ee_flood_hazard_by_county, params_include: {state: TX}, kind: choropleth, geo_matched_min: 150}
+  - id: E10
+    q: "Coastal flood hazard by county in Florida for a 1-in-500-year event."
+    expect: {path: attested, source_id: ac.ee_flood_hazard_by_county, params_include: {state: FL, flood_type: coast, return_period: 500}, kind: choropleth, geo_matched_min: 20}
   # Must stay on the station table: one city, a specific year.
   - id: E6
     q: "What was the average temperature in Chicago in 2023?"
