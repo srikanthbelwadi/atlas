@@ -63,6 +63,9 @@ PUBLIC_IDS_BEFORE_FINANCE = {
     "ac.dc_indicator_for_place",
     "ac.dc_indicator_across_places",
     "ac.usa_top_baby_names",
+    # Earth Engine in BigQuery (ST_REGIONSTATS), 2026-09-08.
+    "ac.ee_era5_climate_by_county",
+    "ac.ee_forest_cover_by_county",
 }
 
 

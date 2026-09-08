@@ -1,0 +1,27 @@
+# Earth Engine in BigQuery, phase B (atlas-earth-engine-ui-plan.md §5): two
+# ST_REGIONSTATS templates over Earth Engine images, per-county rows, map
+# answers. Needs the project registered for Earth Engine and the orchestrator
+# service account holding roles/earthengine.viewer + serviceUsageConsumer.
+#   scripts/golden_run.py --base $ORCH --token "$(scripts/firebase_token.sh)" \
+#       --set tests/golden/ee_a.yaml --report /tmp/ee_a.md
+pack: public
+questions:
+  - id: E1
+    q: "Which counties in California were the hottest in July 2025?"
+    expect: {path: attested, source_id: ac.ee_era5_climate_by_county, params_include: {state: CA, year: 2025, month: 7}, kind: choropleth, geo_matched_min: 50}
+  - id: E2
+    q: "Average temperature by county in Texas in 2024."
+    expect: {path: attested, source_id: ac.ee_era5_climate_by_county, params_include: {state: TX, year: 2024}, kind: choropleth, geo_matched_min: 200}
+  - id: E3
+    q: "How much rain fell in each Oregon county in January 2025?"
+    expect: {path: attested, source_id: ac.ee_era5_climate_by_county, params_include: {state: OR, year: 2025, month: 1}, kind: choropleth, geo_matched_min: 30}
+  - id: E4
+    q: "Which Oregon counties have lost the most forest since 2000?"
+    expect: {path: attested, source_id: ac.ee_forest_cover_by_county, params_include: {state: OR}, kind: choropleth, geo_matched_min: 30}
+  - id: E5
+    q: "Tree cover by county in Washington state."
+    expect: {path: attested, source_id: ac.ee_forest_cover_by_county, params_include: {state: WA}, kind: choropleth, geo_matched_min: 30}
+  # Must stay on the station table: one city, a specific year.
+  - id: E6
+    q: "What was the average temperature in Chicago in 2023?"
+    expect: {path: adhoc, source_prefix: bq.bigquery-public-data.noaa_gsod}

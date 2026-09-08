@@ -450,3 +450,29 @@ def test_finalize_map_attaches_or_downgrades(api):
     assert geo is None and pres["visualization"]["kind"] == "bar" and "downgraded" in note
     bar = json.loads(pres["visualization"]["data"])
     assert bar["labels"] and bar["values"] == sorted(bar["values"], reverse=True)
+
+
+# --- Earth Engine in BigQuery (phase B) ---------------------------------------
+
+EE_IDS = {"ac.ee_era5_climate_by_county", "ac.ee_forest_cover_by_county"}
+
+
+def test_earth_engine_templates_parse_bind_and_declare_method():
+    import re
+    import sqlglot
+    docs = [d for d in okf_loader.load_all(CATALOG, pack="public") if d.id in EE_IDS]
+    assert {d.id for d in docs} == EE_IDS
+    for d in docs:
+        assert d.executor == "bigquery", "phase B rides the guarded BigQuery executor"
+        sql = d.computation["runtime"]["sql"]
+        sqlglot.parse_one(sql, read="bigquery")
+        used = set(re.findall(r"@([a-zA-Z_][a-zA-Z0-9_]*)", sql))
+        declared = {p["name"] for p in d.computation["runtime"]["parameters"]}
+        assert used == declared, d.id
+        assert "ST_REGIONSTATS" in sql and "ee://" in sql
+        assert "geo_id" in sql, "rows must carry the county FIPS so the answer maps"
+        assert "estimate" in d.citation_template.lower(), "computed measurements say so in the citation"
+        assert any(src.get("kind") == "earth_engine" for src in d.sources)
+        assert d.computation["runtime"].get("max_geometries", 0) >= 254, "Texas has 254 counties"
+    assert "EARTH ENGINE templates" in packs.glossary("public")
+    assert "satellite- or" in packs.synthesis_rules("public")

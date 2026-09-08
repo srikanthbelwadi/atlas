@@ -61,7 +61,14 @@ PACKS: dict[str, dict] = {
             "`place` value.\n"
             "- 'What is', 'how many', 'current' with no year → period='latest'. 'Trend', 'over time', "
             "'since', 'change', 'history' → period='all' or a year_from. A named year → year. Never invent "
-            "a year. 'Top 10' → top_n=10; 'lowest/least/smallest' → order='asc'.\n\n"
+            "a year. 'Top 10' → top_n=10; 'lowest/least/smallest' → order='asc'.\n"
+            "- EARTH ENGINE templates (ac.ee_era5_climate_by_county, ac.ee_forest_cover_by_county) answer "
+            "satellite / climate-model measurements for EVERY COUNTY IN ONE STATE: temperature or "
+            "precipitation by county for a month or year, tree cover or forest loss by county. Choose them "
+            "for 'hottest / wettest / driest counties in <state>', 'average temperature by county in <state> "
+            "in <year>', 'which <state> counties lost the most forest'. Bind `state` as the two-letter code. "
+            "They are NOT for one city or one station ('average temperature in Chicago in 2023' stays on the "
+            "NOAA GSOD station tables), not for daily readings, and not for places outside the US.\n\n"
         ),
         "synthesis_rules": (
             "\n\nData Commons rule: when the evidence rows carry a `source` field, the first sentence must "
@@ -71,7 +78,11 @@ PACKS: dict[str, dict] = {
             "precision than the rows carry. Use `choropleth` for a ranking or comparison across five "
             "or more places when geo_capable is true (value_field is the numeric column, label_field "
             "is `place`), `bar` for fewer, `line` for a trend, `kpi_cards` for a single value; never "
-            "choose `map` for these rows (no coordinates)."
+            "choose `map` for these rows (no coordinates). When the rows come from an Earth Engine template "
+            "(a `source` value naming Earth Engine, or `mean_temp_c` / `precipitation_mm` / "
+            "`tree_cover_2000_pct` columns), say in the first sentence that the figures are satellite- or "
+            "model-derived estimates computed over each county's boundary, name the dataset from the "
+            "definition, and never call them observations or readings."
         ),
     },
     "finance": {
