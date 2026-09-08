@@ -354,6 +354,7 @@ may fan out.
 | `sec_ratio` | `ac.sec_ratio_by_year` | ROA, ROE, net margin, efficiency ratio and equity-to-assets from annual facts, with the averaging rule stated in the answer | free API |
 | `datacommons_place` | `ac.dc_indicator_for_place` (public) | resolves place name(s) and a plain-language indicator through Data Commons' own resolvers (`/v2/resolve`, curated key map first), then one `/v2/observation` call; a single source facet for the whole answer, named on every row | free API (key required); 20 s timeout, 32 MB response cap, 3,500-place and 5,000-row caps, 6 h in-process cache |
 | `datacommons_children` | `ac.dc_indicator_across_places` (public) | enumerates every place of a type inside a parent (`containedInPlace+`), fetches the indicator for all of them from one facet, ranks (latest per place or a named year) | same caps; a parent with more children than the cap is refused, never truncated |
+| `bigquery` + Earth Engine | `ac.ee_era5_climate_by_county`, `ac.ee_forest_cover_by_county` (public) | ordinary guarded SQL whose statement calls `ST_REGIONSTATS(county_geom, 'ee://…', band, OPTIONS)` — BigQuery asks Earth Engine to reduce the raster inside each county boundary; no new executor, no Earth Engine client in the container | the dry run and byte cap still apply to the table side; the Earth Engine side is billed as BigQuery Services-SKU slot time, bounded by `max_geometries` (one state at a time) and fixed `scale` in the template, with the project's 350 slot-hour/day default quota as the backstop |
 
 The metric-to-XBRL-tag map lives once, in
 `backend/accessor/xbrl_metrics.py`; the BigQuery template that reads the
@@ -611,7 +612,7 @@ follow-on: `atlas-earth-engine-datacommons-assessment.md`.
 |---|---|---|
 | Data Commons REST v2 (`/v2/resolve`, `/v2/node`, `/v2/observation`) | Reported statistics for countries, states, counties, cities and more; deepest for the US, country-level worldwide; one facet (source) per observation series with `importName`, `provenanceUrl`, `measurementMethod`, `observationPeriod` | 250k+ variables, 200+ sources; free with an API key, no SLA, no published rate limit |
 
-Two `human-reviewed` templates cover it (§8.5): a point / trend /
+Two `human-reviewed` templates cover it (§8.6): a point / trend /
 comparison for named places, and a ranking of every place of one type
 inside a parent. Neither lets the model write a DCID: places and variables
 are resolved by Data Commons' resolvers (a small curated key map first for
@@ -640,7 +641,44 @@ was ever in the list.
 Requires `DC_API_KEY` (Secret Manager); golden set
 `tests/golden/places_a.yaml` (9/9 live, 2026-09-06); `scripts/dc_smoke.py` measured 1.2–2.1 s per accessor call against the live API (≈0 s cached).
 
-### 8.5 Attested computations — all 20
+### 8.5 Public pack — Google Earth Engine, through BigQuery
+
+The public pack's fourth kind of source, and the first that is *computed*
+rather than *reported*: **Google Earth Engine** raster datasets, reached
+through BigQuery's `ST_REGIONSTATS` (GA since 2025) rather than the Earth
+Engine API. A reviewed SQL template asks BigQuery for the mean of an Earth
+Engine image's band inside each county polygon; BigQuery hands the
+reduction to Earth Engine and returns a row per county. Nothing else in
+the stack changed: the same guarded executor, receipt, trace, evidence cap
+and — because rows carry county FIPS — the same choropleth (§7).
+Prerequisites are project-level: the Earth Engine API enabled, the project
+registered for Earth Engine (commercial, Limited plan), and the
+orchestrator's service account holding `roles/earthengine.viewer` and
+`roles/serviceusage.serviceUsageConsumer` (`infra/README.md`).
+
+| Source | Covers | Approximate scale |
+|---|---|---|
+| ECMWF ERA5-Land monthly aggregates (`ee://ECMWF/ERA5_LAND/MONTHLY_AGGR/YYYYMM`) | 2 m air temperature and total precipitation, ~11 km reanalysis grid, 1950 to ~2 months ago, worldwide | one image per month; a state-year is 12 images × 2 bands × its counties at 5 km sampling — seconds of slot time |
+| Hansen/UMD Global Forest Change 2000–2024 v1.12 (`ee://UMD/hansen/global_forest_change_2024_v1_12`) | tree canopy cover in 2000 and canopy loss 2001–2024 from Landsat, 30 m, worldwide | one image; two bands per county at 300 m sampling |
+
+The two templates declare `measurement_kind: computed`, carry a
+`sources` entry of kind `earth_engine` naming the asset, and cite
+themselves as estimates ("a modelled reanalysis estimate, not a station
+observation"); the public synthesis rule makes the first sentence of any
+answer built on them say the figures are satellite- or model-derived and
+computed over each county's boundary. The planner glossary sends "every
+county in a state" climate and forest questions here and keeps one city
+or one station ("average temperature in Chicago in 2023") on the NOAA
+GSOD tables, which is the control question in the golden set. Two things
+were established live before the templates were written and are recorded
+in their bodies: the raster id may be built with `CONCAT` (so one template
+covers any month), and `ST_REGIONSTATS` has no pixel-filter option — the
+forest-loss share is the mean of Hansen's binary `loss` band, not a
+filtered count. Next steps follow `atlas-earth-engine-ui-plan.md`: raster
+tile layers with a time slider (a native Earth Engine accessor), then
+statistics × satellite composites on one map.
+
+### 8.6 Attested computations — all 22
 
 Every reviewed template in the deployment, with its pack, executor and
 typical cost per run. Private templates (🔒) read only `finance_demo` and
@@ -652,6 +690,8 @@ that no public document reads the private dataset.
 | `ac.covid19_case_rate_by_county_year` | public | COVID-19 case rate by county and year | bigquery | ~$0.01 |
 | `ac.sec_edgar_company_metric_by_year` | public + finance | one of 21 curated metrics by fiscal year, one or more companies | sec_edgar | ~$0.005–0.07 |
 | `ac.usa_top_baby_names` | public | most popular US baby names for a year, optionally one state and one sex | bigquery | <$0.01 |
+| `ac.ee_era5_climate_by_county` | public | mean temperature and total precipitation for every county in a state, one month or a year, from ERA5-Land via Earth Engine in BigQuery | bigquery (`ST_REGIONSTATS`) | ~$0.01 a state-month, ~$0.03 a state-year |
+| `ac.ee_forest_cover_by_county` | public | tree cover in 2000 and share of area with forest loss since, every county in a state, from Hansen GFC via Earth Engine in BigQuery | bigquery (`ST_REGIONSTATS`) | ~$0.01 |
 | `ac.dc_indicator_for_place` | public | a reported statistic for one or more named places — latest, one year, a range or the full history | datacommons_place | $0 (free API; Gemini tokens only) |
 | `ac.dc_indicator_across_places` | public | every county / state / city / country inside a parent, ranked by a reported statistic | datacommons_children | $0 (free API; Gemini tokens only) |
 | `ac.cfpb_complaints_trend` | finance | complaint trend by product, company and grain | bigquery | ~$0.01 |
@@ -885,7 +925,7 @@ The finance pack is the worked example of all three.
 
 ## 12. Verification
 
-**Unit tests** (`tests/`, 81 tests, no GCP required): the public catalog is
+**Unit tests** (`tests/`, 82 tests, no GCP required): the public catalog is
 exactly the expected set (the Data Commons and baby-names templates
 included) and untouched by packs; pack isolation; every one of the 17
 finance/public templates parses (sqlglot), binds its parameters and touches
@@ -896,7 +936,8 @@ filters, ranking, pagination and caps run against a fake of the v2 API
 glossary carries the Data Commons routing rules and no finance rule; the
 evidence cap keeps every entity's latest rows; the EDGAR annual series
 picks one 10-K value per fiscal year; place keys, boundary attachment and
-the map downgrade path; the
+the map downgrade path; the Earth Engine templates parse, bind, name the
+county FIPS column, declare their asset and say "estimate"; the
 XBRL tag map is identical in both places it lives; the composite graph is
 acyclic; quote verification; verdict arithmetic; private documents are
 confined to `finance_demo` and no public document reads it; the
@@ -917,6 +958,7 @@ bound parameters, bytes, quotes and verdicts, and writes a report):
 | `finance_d_noaccess` (same account, entitlement revoked) | 4/4 | the same private questions refused naming the withheld sources; SQL naming the private table in the question never reaches BigQuery; a public question unaffected |
 | `places_a` (Data Commons, public pack) | 9/9 | eight attested Data Commons answers with resolved DCIDs and a named source facet (13–19 s end to end; 54 s for the ~3,100-county expansion); one honest no-evidence answer. `public_regression` re-run 10/10 on the same revision |
 | `maps_a` (map answers) | 7/7 | five rankings across places render as `choropleth` with boundaries attached (`geo_matched_min`); India's population stays a KPI and a one-place income trend stays a line |
+| `ee_a` (Earth Engine in BigQuery) | 6/6 | hottest California counties in July 2025, Texas temperature by county for 2024 (254 counties × 12 months, 81 s), Oregon rainfall by county, Oregon forest loss and Washington tree cover — all as maps with the estimate caveat; Chicago's 2023 temperature stays on the NOAA station table |
 | `public_b` (candidate example questions) | 11/13 over two rounds | new chips are promoted to the home page only from this set once they pass: NYC 311 types, NYC collisions trend, LA PM2.5 trend, rising search terms, FEC committees, Asia CO₂ per capita, Brazil GDP per capita, Nigeria/Germany fertility, median age in Miami, obesity by state (the last two after the discovery cap, §4). SF 311 by category and the CPI trend failed in ad-hoc SQL and stay as regression targets, not chips |
 
 Five rounds of finance golden runs found and fixed: JSON serialisation of

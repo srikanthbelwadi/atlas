@@ -6,8 +6,9 @@
 // tests/golden/places_a.yaml and public_b.yaml (Data Commons and round-B
 // BigQuery questions) and, for the multi-company filings question,
 // tests/golden/finance_b.yaml (the SEC EDGAR template is shared by both
-// packs). Candidates for the next round live in tests/golden/public_b.yaml
-// and are promoted here only after they pass.
+// packs), and tests/golden/ee_a.yaml for the Earth Engine section.
+// Candidates for the next round live in tests/golden/public_b.yaml and are
+// promoted here only after they pass.
 
 import type { ExampleGroup } from "@/components/AskBar";
 
@@ -55,6 +56,13 @@ export const PUBLIC_EXAMPLES: ExampleGroup[] = [
       "What are the most common types of crime reported in Chicago?",
       "What are the most common 311 complaint types in New York City?",
       "How have motor-vehicle collisions in New York City trended by year?",
+    ],
+  },
+  {
+    label: "Climate & land — Earth Engine",
+    questions: [
+      "Which counties in California were the hottest in July 2025?",
+      "Which Oregon counties have lost the most forest since 2000?",
     ],
   },
   {
